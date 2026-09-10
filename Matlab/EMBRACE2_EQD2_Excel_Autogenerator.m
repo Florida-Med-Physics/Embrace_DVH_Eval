@@ -1,32 +1,33 @@
 classdef EMBRACE2_EQD2_Excel_Autogenerator < matlab.apps.AppBase
     % EMBRACE2_EQD2_Excel_Autogenerator
     %
-    % One-click DVH TXT -> populated EQD2 Excel workbook
-    %
-    % REQUIRED TEMPLATE:
-    %   EQD2_with_tolerances_090126.xlsx
-    %
-    % Keep the template in the same folder as this .m file,
-    % OR anywhere on the MATLAB path.
-    %
+    % Excel-like EMBRACE-2 dashboard
     % MATLAB R2024b
     %
-    % Current structure mapping:
-    %   GTVres              -> Volume, D98
-    %   CTV_HR              -> Volume, D98, D90, D50
-    %   CTV_IR              -> Volume, D98, D90
-    %   Bladder             -> Volume, D0.1cc, D2cc
-    %   Rectum              -> Volume, D0.1cc, D2cc
-    %   Colon_Sigmoid       -> Volume, D0.1cc, D2cc
-    %   Bowel               -> Volume, D0.1cc, D2cc
+    % Layout:
+    %   TARGETS:
+    %   F1 | F2 | F3 | F4 | TOTAL BT + EBT | Planning Goal | Tolerance
     %
-    % Fraction columns:
-    %   Fx1 = C
-    %   Fx2 = D
-    %   Fx3 = E
-    %   Fx4 = F
-    %   Fx5 = G
-    %   Fx6 = H
+    %   OARs:
+    %   F1 | F2 | F3 | F4 | TOTAL BT + EBT | Soft Constraints | Hard Constraints
+    %
+    % DVH loading:
+    %   Load Fx1 -> populates Fx1 and carries forward to Fx2-Fx4
+    %   Load Fx2 -> overwrites Fx2 and carries forward to Fx3-Fx4
+    %   Load Fx3 -> overwrites Fx3 and carries forward to Fx4
+    %   Load Fx4 -> overwrites Fx4 only
+    %
+    % Display:
+    %   All calculated values shown to 2 decimal places.
+    %
+    % Total cell color:
+    %   Green  = meets Planning Goal / Soft Constraint
+    %   Yellow = misses Planning Goal / Soft Constraint,
+    %            but meets Tolerance / Hard Constraint
+    %   Red    = fails Tolerance / Hard Constraint
+    %
+    % Required template:
+    %   EQD2_with_tolerances_090126.xlsx
 
     properties (Access = public)
         UIFigure matlab.ui.Figure
@@ -34,306 +35,370 @@ classdef EMBRACE2_EQD2_Excel_Autogenerator < matlab.apps.AppBase
 
         HeaderPanel matlab.ui.container.Panel
         HeaderGrid matlab.ui.container.GridLayout
-        UFLabel matlab.ui.control.Label
-        InstituteLabel matlab.ui.control.Label
-        HeaderTagline matlab.ui.control.Label
-
         TitleLabel matlab.ui.control.Label
-        SubtitleLabel matlab.ui.control.Label
+        BrandLabel matlab.ui.control.Label
 
-        WorkflowPanel matlab.ui.container.Panel
-        WorkflowGrid matlab.ui.container.GridLayout
-        Step1Label matlab.ui.control.Label
-        Arrow1Label matlab.ui.control.Label
-        Step2Label matlab.ui.control.Label
-        Arrow2Label matlab.ui.control.Label
-        Step3Label matlab.ui.control.Label
+        LoadPanel matlab.ui.container.Panel
+        LoadGrid matlab.ui.container.GridLayout
+        LoadLabel matlab.ui.control.Label
+        Fx1Button matlab.ui.control.Button
+        Fx2Button matlab.ui.control.Button
+        Fx3Button matlab.ui.control.Button
+        Fx4Button matlab.ui.control.Button
+        FileStatusLabel matlab.ui.control.Label
 
-        InputPanel matlab.ui.container.Panel
-        InputGrid matlab.ui.container.GridLayout
-        SelectButton matlab.ui.control.Button
-        FileInfoGrid matlab.ui.container.GridLayout
-        FileNameLabel matlab.ui.control.Label
-        PatientLabel matlab.ui.control.Label
-        PatientIDLabel matlab.ui.control.Label
-        PlanLabel matlab.ui.control.Label
-        FractionLabel matlab.ui.control.Label
+        PriorRTHeader matlab.ui.control.Label
+        PriorRTTable matlab.ui.control.Table
 
-        LogPanel matlab.ui.container.Panel
-        LogGrid matlab.ui.container.GridLayout
-        LogHeaderLabel matlab.ui.control.Label
-        ClearLogButton matlab.ui.control.Button
-        DetailsArea matlab.ui.control.TextArea
+        TargetHeader matlab.ui.control.Label
+        TargetTable matlab.ui.control.Table
 
-        NotesPanel matlab.ui.container.Panel
-        NotesGrid matlab.ui.container.GridLayout
-        NotesTitle matlab.ui.control.Label
-        NotesLabel matlab.ui.control.Label
+        OARHeader matlab.ui.control.Label
+        OARTable matlab.ui.control.Table
 
         FooterPanel matlab.ui.container.Panel
         FooterGrid matlab.ui.container.GridLayout
-        FooterLeft matlab.ui.control.Label
-        FooterRight matlab.ui.control.Label
+        StatusLabel matlab.ui.control.Label
+        ClearButton matlab.ui.control.Button
+        ExportButton matlab.ui.control.Button
     end
 
     properties (Access = private)
-        UFBlue = [0.0000 0.1294 0.4118]      % #0021A5-ish deep blue
-        UFDarkBlue = [0.0000 0.1804 0.3765]  % dark institutional blue
-        UFOrange = [0.9804 0.2902 0.0000]    % #FA4B00-ish orange
-        LightBlue = [0.945 0.970 0.990]
-        BorderGray = [0.82 0.85 0.88]
-        TextGray = [0.18 0.22 0.30]
+        Black = [0 0 0]
+        NearBlack = [0.025 0.025 0.030]
+        TableBlack = [0.055 0.055 0.065]
+        TableBlackAlt = [0.085 0.085 0.095]
+        SectionGray = [0.12 0.12 0.14]
+
+        UFBlue = [0.000 0.129 0.412]
+        UFOrange = [0.980 0.290 0.000]
+        White = [1 1 1]
+        Muted = [0.72 0.76 0.82]
+
+        % Excel-like worksheet palette
+        CurrentDoseBlue = [0.78 0.93 0.95]
+        EQDWhite = [1.00 1.00 1.00]
+        HeaderBlue = [0.70 0.88 0.91]
+        ConstraintWhite = [1.00 1.00 1.00]
+
+        PassGreen = [0.45 0.75 0.43]
+        WarnYellow = [0.96 0.80 0.32]
+        FailRed = [0.88 0.34 0.30]
+
+        TargetDefs
+        OARDefs
+
+        LoadedFiles = strings(1,4)
+        ExplicitlyLoaded = false(1,4)
     end
 
     methods (Access = private)
 
         function startupFcn(app)
-            app.appendLog("Ready. Select a DVH TXT file to begin.");
+            app.refreshFileStatus();
+            app.recalculateAll();
+            app.StatusLabel.Text = ...
+                'Set prior RT fractionation, then load Fx1-Fx4 DVHs or manually edit physical values.';
         end
 
 
-        function selectAndProcess(app, ~)
+        function initializeDefinitions(app)
 
-            [file, folder] = uigetfile( ...
+            % Columns:
+            % 1 display label (units embedded in brackets)
+            % 2 type: spacer / section / physical / eqd
+            % 3 internal key
+            % 4 physical source key for EQD2 rows
+            % 5 Excel row
+            % 6 alpha/beta
+            % 7 EBRT EQD2 baseline
+            % 8 goal/soft constraint text
+            % 9 tolerance/hard constraint text
+            %
+            % Structure section rows store ROI volume internally in their
+            % key so the title can be updated to e.g.:
+            %   GTVres [40.00 cc]
+
+            app.TargetDefs = {
+                '',                'spacer',   '',                    '',                NaN, NaN, NaN, '',      ''
+                'GTV_res',          'section',  'gtvres_volume',      '',                 38, NaN, NaN, '',      ''
+                'D98 [Gy]',        'physical', 'gtvres_D98',         '',                 39, NaN, NaN, '',      ''
+                'D98 EQD210 [Gy]', 'eqd',      'gtvres_D98_EQD210',  'gtvres_D98',      NaN, 10, 44.25, '>95',   '>90'
+
+                '',                'spacer',   '',                    '',                NaN, NaN, NaN, '',      ''
+                'CTV_HR',           'section',   'ctvhr_volume',       '',                 42, NaN, NaN, '',      ''
+                'D98 [Gy]',        'physical', 'ctvhr_D98',          '',                 43, NaN, NaN, '',      ''
+                'D98 EQD210 [Gy]', 'eqd',      'ctvhr_D98_EQD210',   'ctvhr_D98',       NaN, 10, 44.25, '>75',   '>75'
+                'D90 [Gy]',        'physical', 'ctvhr_D90',          '',                 45, NaN, NaN, '',      ''
+                'D90 EQD210 [Gy]', 'eqd',      'ctvhr_D90_EQD210',   'ctvhr_D90',       NaN, 10, 44.25, '90-95', '>85'
+                'D50 [Gy]',        'physical', 'ctvhr_D50',          '',                 47, NaN, NaN, '',      ''
+                'D50 EQD210 [Gy]', 'eqd',      'ctvhr_D50_EQD210',   'ctvhr_D50',       NaN, 10, 44.25, '',      ''
+
+                '',                'spacer',   '',                    '',                NaN, NaN, NaN, '',      ''
+                'CTV_IR',           'section',   'ctvir_volume',       '',                 50, NaN, NaN, '',      ''
+                'D98 [Gy]',        'physical', 'ctvir_D98',          '',                 51, NaN, NaN, '',      ''
+                'D98 EQD210 [Gy]', 'eqd',      'ctvir_D98_EQD210',   'ctvir_D98',       NaN, 10, 44.25, '>60',   '>60'
+                'D90 [Gy]',        'physical', 'ctvir_D90',          '',                 53, NaN, NaN, '',      ''
+                'D90 EQD210 [Gy]', 'eqd',      'ctvir_D90_EQD210',   'ctvir_D90',       NaN, 10, 44.25, '',      ''
+                };
+
+            app.OARDefs = {
+                '',                         'spacer',   '',                   '',                NaN, NaN, NaN, '',    ''
+                'BLADDER',                  'section',  'bladder_volume',     '',                NaN, NaN, NaN, '',    ''
+                'D0.1cc [Gy]',              'physical', 'bladder_D0p1',       '',                 59, NaN, NaN, '',    ''
+                'D0.1cc EQD23 [Gy]',        'eqd',      'bladder_D0p1_EQD23','bladder_D0p1',    NaN, 3, 43.20, '',    ''
+                'D2cc [Gy]',                'physical', 'bladder_D2',         '',                 61, NaN, NaN, '',    ''
+                'D2cc EQD23 [Gy]',          'eqd',      'bladder_D2_EQD23',  'bladder_D2',      NaN, 3, 43.20, '<80', '<90'
+
+                '',                         'spacer',   '',                   '',                NaN, NaN, NaN, '',    ''
+                'RECTUM',                   'section',   'rectum_volume',      '',                NaN, NaN, NaN, '',    ''
+                'D0.1cc [Gy]',              'physical', 'rectum_D0p1',        '',                 67, NaN, NaN, '',    ''
+                'D0.1cc EQD23 [Gy]',        'eqd',      'rectum_D0p1_EQD23', 'rectum_D0p1',     NaN, 3, 43.20, '',    ''
+                'D2cc [Gy]',                'physical', 'rectum_D2',          '',                 69, NaN, NaN, '',    ''
+                'D2cc EQD23 [Gy]',          'eqd',      'rectum_D2_EQD23',   'rectum_D2',       NaN, 3, 43.20, '<65', '<75'
+
+                '',                         'spacer',   '',                   '',                NaN, NaN, NaN, '',    ''
+                'SIGMOID',                  'section',   'sigmoid_volume',     '',                NaN, NaN, NaN, '',    ''
+                'D0.1cc [Gy]',              'physical', 'sigmoid_D0p1',       '',                 73, NaN, NaN, '',    ''
+                'D0.1cc EQD23 [Gy]',        'eqd',      'sigmoid_D0p1_EQD23','sigmoid_D0p1',    NaN, 3, 43.20, '',    ''
+                'D2cc [Gy]',                'physical', 'sigmoid_D2',         '',                 75, NaN, NaN, '',    ''
+                'D2cc EQD23 [Gy]',          'eqd',      'sigmoid_D2_EQD23',  'sigmoid_D2',      NaN, 3, 43.20, '<70', '<75'
+
+                '',                         'spacer',   '',                   '',                NaN, NaN, NaN, '',    ''
+                'INTESTINES OR BOWEL',      'section',   'bowel_volume',       '',                NaN, NaN, NaN, '',    ''
+                'D0.1cc [Gy]',              'physical', 'bowel_D0p1',         '',                 79, NaN, NaN, '',    ''
+                'D0.1cc EQD23 [Gy]',        'eqd',      'bowel_D0p1_EQD23',  'bowel_D0p1',      NaN, 3, 43.20, '',    ''
+                'D2cc [Gy]',                'physical', 'bowel_D2',           '',                 81, NaN, NaN, '',    ''
+                'D2cc EQD23 [Gy]',          'eqd',      'bowel_D2_EQD23',    'bowel_D2',        NaN, 3, 43.20, '<70', '<75'
+                };
+        end
+
+
+        function data = makeInitialTable(app,defs)
+            n = size(defs,1);
+            data = cell(n,8);
+
+            for r = 1:n
+                rowType = string(defs{r,2});
+
+                if rowType == "physical" || rowType == "eqd"
+                    % Indent dose/constraint rows beneath the ROI title.
+                    data{r,1} = ['    ' char(string(defs{r,1}))];
+                else
+                    data{r,1} = defs{r,1};
+                end
+
+                for c = 2:6
+                    data{r,c} = '';
+                end
+
+                data{r,7} = defs{r,8};
+                data{r,8} = defs{r,9};
+            end
+        end
+
+
+        function loadFraction(app,fx)
+
+            [file,folder] = uigetfile( ...
                 {'*.txt','DVH text files (*.txt)'; '*.*','All files'}, ...
-                'Select DVH TXT File');
+                sprintf('Load Fx%d DVH TXT',fx));
 
             if isequal(file,0)
-                app.appendLog("No file selected.");
                 return
             end
 
-            txtPath = fullfile(folder, file);
-
-            app.SelectButton.Enable = 'off';
-            app.SelectButton.Text = 'PROCESSING...';
-            drawnow;
-
             try
-                app.appendLog("------------------------------------------------------------");
-                app.appendLog("Selected: " + string(txtPath));
+                path = fullfile(folder,file);
 
-                %% Locate template robustly
-                templatePath = app.findTemplate();
+                app.StatusLabel.Text = sprintf('Reading Fx%d DVH...',fx);
+                drawnow;
 
-                app.appendLog("Template: " + string(templatePath));
+                parsed = app.parseDVH(path);
+                metrics = app.calculateAllMetrics(parsed);
 
-                %% Parse DVH
-                parsed = app.parseDVH(txtPath);
+                % This fraction was explicitly selected by the user.
+                % It is now protected from carry-forward from any earlier Fx.
+                app.ExplicitlyLoaded(fx) = true;
+                app.LoadedFiles(fx) = string(file);
 
-                app.FileNameLabel.Text = "File: " + string(file);
-                app.PatientLabel.Text = "Patient: " + app.displayOrDash(parsed.Patient);
-                app.PatientIDLabel.Text = "Patient ID: " + app.displayOrDash(parsed.PatientID);
-                app.PlanLabel.Text = "Plan: " + app.displayOrDash(parsed.Plan);
-                app.FractionLabel.Text = "Detected Fraction: Fx" + string(parsed.Fraction);
+                % Always populate the selected fraction itself.
+                app.applyMetrics(app.TargetTable,app.TargetDefs,fx,metrics,false);
+                app.applyMetrics(app.OARTable,app.OARDefs,fx,metrics,false);
 
-                app.appendLog("Detected fraction: Fx" + string(parsed.Fraction));
-                app.appendLog("Parsed " + string(numel(parsed.ROIs)) + " ROI sections.");
+                % Carry this newly selected fraction only into later fractions
+                % that have NEVER been explicitly loaded by the user.
+                %
+                % Examples:
+                %   Load Fx1 -> fills Fx1-Fx4.
+                %   Then load Fx2 -> replaces Fx2 and carries Fx2 into Fx3-Fx4.
+                %   If Fx3 had already been explicitly loaded, Fx3 is preserved.
+                %   Loading/editing an earlier fraction never pushes backward.
+                carriedTo = [];
 
-                %% Calculate DVH metrics
-                [results, ignored] = app.calculateMetrics(parsed);
+                for destinationFx = fx+1:4
+                    if ~app.ExplicitlyLoaded(destinationFx)
+                        app.copyMetricsToFraction( ...
+                            app.TargetTable,app.TargetDefs,destinationFx,metrics);
+                        app.copyMetricsToFraction( ...
+                            app.OARTable,app.OARDefs,destinationFx,metrics);
 
-                recognized = string(fieldnames(results));
-                app.appendLog("Recognized structures: " + strjoin(recognized, ", "));
+                        app.LoadedFiles(destinationFx) = ...
+                            string(file) + sprintf(" (carried from Fx%d)",fx);
 
-                if ~isempty(ignored)
-                    app.appendLog("Ignored/unmapped ROIs: " + strjoin(ignored, ", "));
+                        carriedTo(end+1) = destinationFx; %#ok<AGROW>
+                    end
                 end
 
-                %% Build workbook updates
-                updates = app.buildUpdates(parsed, results);
+                app.refreshFileStatus();
+                app.recalculateAll();
 
-                %% Output workbook
-                outputPath = app.makeOutputName(txtPath, parsed);
-                outputPath = app.makeUniquePath(outputPath);
-
-                app.appendLog("Creating workbook: " + string(outputPath));
-
-                [ok, msg] = copyfile(templatePath, outputPath, 'f');
-                if ~ok
-                    error("Unable to copy EQD2 template." + newline + ...
-                          "Source: " + string(templatePath) + newline + ...
-                          "Destination: " + string(outputPath) + newline + ...
-                          "System message: " + string(msg));
+                if isempty(carriedTo)
+                    app.StatusLabel.Text = sprintf( ...
+                        'Loaded Fx%d: %s. Later explicitly loaded fractions were preserved.', ...
+                        fx,file);
+                else
+                    carriedText = strjoin("Fx" + string(carriedTo),", ");
+                    app.StatusLabel.Text = sprintf( ...
+                        'Loaded Fx%d: %s. Carried forward to %s; explicitly loaded later fractions were preserved.', ...
+                        fx,file,char(carriedText));
                 end
-
-                if ~isfile(outputPath)
-                    error("Workbook copy reported success, but output file was not created:" + newline + ...
-                          string(outputPath));
-                end
-
-                %% Populate workbook
-                updatedSheets = app.populateWorkbook(outputPath, updates);
-
-                app.appendLog("Updated worksheets: " + strjoin(updatedSheets, ", "));
-                app.appendLog("SUCCESS");
-                app.appendLog("Saved workbook: " + string(outputPath));
-
-                app.SelectButton.Text = 'SELECT ANOTHER DVH TXT FILE...';
-                app.SelectButton.Enable = 'on';
-
-                uialert(app.UIFigure, ...
-                    sprintf(['EQD2 workbook created successfully.\n\n' ...
-                             'Fraction: Fx%d\n\n' ...
-                             'Saved to:\n%s'], ...
-                             parsed.Fraction, outputPath), ...
-                    'EMBRACE-2 Complete', ...
-                    'Icon','success');
 
             catch ME
-                app.SelectButton.Text = 'SELECT DVH TXT FILE...';
-                app.SelectButton.Enable = 'on';
-
-                report = getReport(ME, 'extended', 'hyperlinks', 'off');
-                app.appendLog("ERROR:");
-                app.appendLog(string(report));
-
-                uialert(app.UIFigure, ...
-                    ME.message, ...
-                    'EMBRACE-2 Error', ...
+                app.StatusLabel.Text = sprintf('Fx%d load failed.',fx);
+                uialert(app.UIFigure,ME.message, ...
+                    sprintf('Fx%d DVH Import Error',fx), ...
                     'Icon','error');
             end
         end
 
 
-        function templatePath = findTemplate(app)
-            templateName = 'EQD2_with_tolerances_090126.xlsx';
+        function applyMetrics(app,tableHandle,defs,fx,metrics,carryForward)
 
-            candidates = strings(0,1);
-
-            %% 1) MATLAB path
-            p = which(templateName);
-            if ~isempty(p)
-                candidates(end+1) = string(p);
+            if nargin < 6
+                carryForward = false;
             end
 
-            %% 2) Same folder as class file
-            classPath = which(class(app));
-            if ~isempty(classPath)
-                appFolder = fileparts(classPath);
-                candidates(end+1) = string(fullfile(appFolder, templateName));
-            end
+            % Populate the explicitly selected fraction.
+            app.copyMetricsToFraction(tableHandle,defs,fx,metrics);
 
-            %% 3) Current MATLAB folder
-            candidates(end+1) = string(fullfile(pwd, templateName));
-
-            candidates = unique(candidates, 'stable');
-
-            for i = 1:numel(candidates)
-                if isfile(candidates(i))
-                    [status, attr] = fileattrib(char(candidates(i)));
-                    if status
-                        templatePath = char(attr.Name);
-                    else
-                        templatePath = char(candidates(i));
+            % Optional legacy/internal carry behavior. Normal GUI loading now
+            % performs protected carry-forward in loadFraction().
+            if carryForward
+                for destinationFx = fx+1:4
+                    if ~app.ExplicitlyLoaded(destinationFx)
+                        app.copyMetricsToFraction( ...
+                            tableHandle,defs,destinationFx,metrics);
                     end
-                    return
                 end
             end
-
-            searched = strjoin(candidates, newline);
-
-            error("Could not find " + templateName + "." + newline + newline + ...
-                  "Keep it in the same folder as EMBRACE2_EQD2_Excel_Autogenerator.m " + ...
-                  "or add its folder to the MATLAB path." + newline + newline + ...
-                  "Locations checked:" + newline + searched);
         end
 
 
-        function parsed = parseDVH(app, path)
+        function copyMetricsToFraction(app,tableHandle,defs,destinationFx,metrics)
+
+            data = tableHandle.Data;
+            names = string(fieldnames(metrics));
+
+            for r = 1:size(defs,1)
+                rowType = string(defs{r,2});
+                key = string(defs{r,3});
+
+                if strlength(key)==0 || ~any(names == key)
+                    continue
+                end
+
+                value = metrics.(char(key));
+
+                if ~isfinite(value)
+                    continue
+                end
+
+                if rowType == "section"
+                    % There is one displayed ROI title for all fractions, so
+                    % show the volume from the most recently selected DVH.
+                    baseName = string(defs{r,1});
+                    data{r,1} = sprintf('%s [%.2f cc]',baseName,value);
+
+                elseif rowType == "physical"
+                    data{r,destinationFx+1} = app.fmt(value);
+                end
+            end
+
+            tableHandle.Data = data;
+        end
+
+
+        function parsed = parseDVH(app,path)
 
             if ~isfile(path)
-                error("The selected DVH TXT file does not exist:" + newline + string(path));
+                error("TXT file not found:" + newline + string(path));
             end
 
             txt = fileread(path);
 
-            %% Dose units
-            if ~isempty(regexpi(txt, 'Absolute Dose\s*-\s*\[cGy\]', 'once'))
-                doseUnit = "cGy";
+            if ~isempty(regexpi(txt,'Absolute Dose\s*-\s*\[cGy\]','once'))
                 doseScale = 0.01;
-
-            elseif ~isempty(regexpi(txt, 'Absolute Dose\s*-\s*\[Gy\]', 'once'))
-                doseUnit = "Gy";
+            elseif ~isempty(regexpi(txt,'Absolute Dose\s*-\s*\[Gy\]','once'))
                 doseScale = 1.0;
-
             else
-                error(['Could not identify the DVH dose units.' newline ...
-                       'Expected "Absolute Dose - [cGy]" or "Absolute Dose - [Gy]".']);
+                error(['Could not identify dose units.' newline ...
+                    'Expected "Absolute Dose - [cGy]" or "Absolute Dose - [Gy]".']);
             end
 
-            %% Cumulative mode
-            if isempty(regexpi(txt, 'Cumulative mode', 'once'))
-                error("This application expects a cumulative DVH export.");
+            if isempty(regexpi(txt,'Cumulative mode','once'))
+                error('This app expects a cumulative DVH export.');
             end
 
-            %% Header
-            parsed.Patient   = string(app.getHeaderValue(txt, 'Patient'));
-            parsed.PatientID = string(app.getHeaderValue(txt, 'Patient Id'));
-            parsed.Case      = string(app.getHeaderValue(txt, 'Case'));
-            parsed.Plan      = string(app.getHeaderValue(txt, 'Plan'));
-            parsed.DoseUnit  = doseUnit;
+            parsed.Patient = string(app.getHeaderValue(txt,'Patient'));
+            parsed.PatientID = string(app.getHeaderValue(txt,'Patient Id'));
+            parsed.Plan = string(app.getHeaderValue(txt,'Plan'));
 
-            %% ROI blocks
-            [tokens, starts, ends] = regexp( ...
-                txt, ...
-                '(?m)^\s*ROI:\s*(.+?)\s*$', ...
-                'tokens', 'start', 'end');
+            [tokens,starts,ends] = regexp( ...
+                txt,'(?m)^\s*ROI:\s*(.+?)\s*$', ...
+                'tokens','start','end');
 
             if isempty(tokens)
-                error("No ROI sections were found in the DVH TXT file.");
+                error('No ROI sections were found.');
             end
 
-            rois = struct('Name',{}, 'DoseGy',{}, 'VolumeCC',{});
-            fxDetected = [];
+            rois = struct('Name',{},'DoseGy',{},'VolumeCC',{});
 
             for i = 1:numel(tokens)
 
                 roiName = strtrim(tokens{i}{1});
 
-                bodyStart = ends(i) + 1;
+                bodyStart = ends(i)+1;
                 if i < numel(tokens)
-                    bodyEnd = starts(i+1) - 1;
+                    bodyEnd = starts(i+1)-1;
                 else
                     bodyEnd = numel(txt);
                 end
 
                 body = txt(bodyStart:bodyEnd);
 
-                %% Fraction detection from ROI name
-                fxTok = regexpi( ...
-                    roiName, ...
-                    '[ _-]*fx([1-6])\s*$', ...
-                    'tokens', 'once');
-
-                if ~isempty(fxTok)
-                    fxDetected(end+1) = str2double(fxTok{1}); %#ok<AGROW>
-                end
-
-                %% Parse numeric rows:
-                % bin  dose  cumulative-volume
-                rowTok = regexp( ...
+                rows = regexp( ...
                     body, ...
                     ['(?m)^\s*\d+\s+' ...
                      '([-+]?\d*\.?\d+(?:[Ee][-+]?\d+)?)\s+' ...
                      '([-+]?\d*\.?\d+(?:[Ee][-+]?\d+)?)\s*$'], ...
                     'tokens');
 
-                if isempty(rowTok)
+                if isempty(rows)
                     continue
                 end
 
-                dose = zeros(numel(rowTok),1);
-                vol  = zeros(numel(rowTok),1);
+                dose = zeros(numel(rows),1);
+                vol = zeros(numel(rows),1);
 
-                for j = 1:numel(rowTok)
-                    dose(j) = str2double(rowTok{j}{1}) * doseScale;
-                    vol(j)  = str2double(rowTok{j}{2});
+                for j = 1:numel(rows)
+                    dose(j) = str2double(rows{j}{1}) * doseScale;
+                    vol(j) = str2double(rows{j}{2});
                 end
 
                 valid = isfinite(dose) & isfinite(vol);
                 dose = dose(valid);
-                vol  = vol(valid);
+                vol = vol(valid);
 
                 if isempty(dose)
                     continue
@@ -345,45 +410,28 @@ classdef EMBRACE2_EQD2_Excel_Autogenerator < matlab.apps.AppBase
             end
 
             if isempty(rois)
-                error("ROI headers were found, but no numeric DVH data rows could be parsed.");
+                error('No numeric DVH data could be parsed.');
             end
 
-            %% Fraction fallback from Plan
-            fxDetected = unique(fxDetected);
-
-            if isempty(fxDetected)
-                pTok = regexpi(char(parsed.Plan), 'fx\s*([1-6])', 'tokens', 'once');
-                if ~isempty(pTok)
-                    fxDetected = str2double(pTok{1});
-                end
-            end
-
-            if numel(fxDetected) ~= 1
-                error("Could not uniquely determine the fraction number. Detected: " + ...
-                      mat2str(fxDetected));
-            end
-
-            parsed.Fraction = fxDetected;
             parsed.ROIs = rois;
         end
 
 
-        function value = getHeaderValue(app, txt, key) %#ok<INUSD>
-            pat = ['(?m)^\s*' regexptranslate('escape', key) ':\s*(.*?)\s*$'];
-            t = regexp(txt, pat, 'tokens', 'once');
+        function value = getHeaderValue(app,txt,key) %#ok<INUSD>
+            pattern = ['(?m)^\s*' regexptranslate('escape',key) ':\s*(.*?)\s*$'];
+            tok = regexp(txt,pattern,'tokens','once');
 
-            if isempty(t)
+            if isempty(tok)
                 value = '';
             else
-                value = strtrim(t{1});
+                value = strtrim(tok{1});
             end
         end
 
 
-        function [results, ignored] = calculateMetrics(app, parsed)
+        function metrics = calculateAllMetrics(app,parsed)
 
-            results = struct();
-            ignored = strings(0,1);
+            metrics = struct();
 
             for i = 1:numel(parsed.ROIs)
 
@@ -391,137 +439,117 @@ classdef EMBRACE2_EQD2_Excel_Autogenerator < matlab.apps.AppBase
                 key = app.structureKey(roi.Name);
 
                 if key == ""
-                    ignored(end+1) = roi.Name; %#ok<AGROW>
                     continue
                 end
 
-                %% Total structure volume
                 totalCC = max(roi.VolumeCC);
-
-                r = struct();
-                r.ROIName = roi.Name;
-                r.VolumeCC = totalCC;
-                r.Metrics = struct();
 
                 switch key
                     case "gtvres"
-                        r.Metrics.D98 = app.doseAtVolume( ...
-                            roi.DoseGy, roi.VolumeCC, totalCC*0.98);
+                        metrics.gtvres_volume = totalCC;
+                        metrics.gtvres_D98 = app.doseAtVolume( ...
+                            roi.DoseGy,roi.VolumeCC,totalCC*0.98);
 
-                    case "ctv_hr"
-                        r.Metrics.D98 = app.doseAtVolume( ...
-                            roi.DoseGy, roi.VolumeCC, totalCC*0.98);
-                        r.Metrics.D90 = app.doseAtVolume( ...
-                            roi.DoseGy, roi.VolumeCC, totalCC*0.90);
-                        r.Metrics.D50 = app.doseAtVolume( ...
-                            roi.DoseGy, roi.VolumeCC, totalCC*0.50);
+                    case "ctvhr"
+                        metrics.ctvhr_volume = totalCC;
+                        metrics.ctvhr_D98 = app.doseAtVolume( ...
+                            roi.DoseGy,roi.VolumeCC,totalCC*0.98);
+                        metrics.ctvhr_D90 = app.doseAtVolume( ...
+                            roi.DoseGy,roi.VolumeCC,totalCC*0.90);
+                        metrics.ctvhr_D50 = app.doseAtVolume( ...
+                            roi.DoseGy,roi.VolumeCC,totalCC*0.50);
 
-                    case "ctv_ir"
-                        r.Metrics.D98 = app.doseAtVolume( ...
-                            roi.DoseGy, roi.VolumeCC, totalCC*0.98);
-                        r.Metrics.D90 = app.doseAtVolume( ...
-                            roi.DoseGy, roi.VolumeCC, totalCC*0.90);
+                    case "ctvir"
+                        metrics.ctvir_volume = totalCC;
+                        metrics.ctvir_D98 = app.doseAtVolume( ...
+                            roi.DoseGy,roi.VolumeCC,totalCC*0.98);
+                        metrics.ctvir_D90 = app.doseAtVolume( ...
+                            roi.DoseGy,roi.VolumeCC,totalCC*0.90);
 
-                    otherwise
-                        r.Metrics.D0p1cc = app.doseAtVolume( ...
-                            roi.DoseGy, roi.VolumeCC, 0.1);
-                        r.Metrics.D2cc = app.doseAtVolume( ...
-                            roi.DoseGy, roi.VolumeCC, 2.0);
+                    case "bladder"
+                        metrics.bladder_volume = totalCC;
+                        metrics.bladder_D0p1 = app.doseAtVolume( ...
+                            roi.DoseGy,roi.VolumeCC,0.1);
+                        metrics.bladder_D2 = app.doseAtVolume( ...
+                            roi.DoseGy,roi.VolumeCC,2.0);
+
+                    case "rectum"
+                        metrics.rectum_volume = totalCC;
+                        metrics.rectum_D0p1 = app.doseAtVolume( ...
+                            roi.DoseGy,roi.VolumeCC,0.1);
+                        metrics.rectum_D2 = app.doseAtVolume( ...
+                            roi.DoseGy,roi.VolumeCC,2.0);
+
+                    case "sigmoid"
+                        metrics.sigmoid_volume = totalCC;
+                        metrics.sigmoid_D0p1 = app.doseAtVolume( ...
+                            roi.DoseGy,roi.VolumeCC,0.1);
+                        metrics.sigmoid_D2 = app.doseAtVolume( ...
+                            roi.DoseGy,roi.VolumeCC,2.0);
+
+                    case "bowel"
+                        metrics.bowel_volume = totalCC;
+                        metrics.bowel_D0p1 = app.doseAtVolume( ...
+                            roi.DoseGy,roi.VolumeCC,0.1);
+                        metrics.bowel_D2 = app.doseAtVolume( ...
+                            roi.DoseGy,roi.VolumeCC,2.0);
                 end
-
-                results.(char(key)) = r;
             end
 
-            if isempty(fieldnames(results))
-                names = strings(1,numel(parsed.ROIs));
-                for i = 1:numel(parsed.ROIs)
-                    names(i) = parsed.ROIs(i).Name;
-                end
-
-                error("No recognized EMBRACE-2 structures were found." + newline + newline + ...
-                      "ROI names parsed from file:" + newline + ...
-                      strjoin(names, newline));
+            if isempty(fieldnames(metrics))
+                error('No recognized EMBRACE-2 structures were found in the DVH.');
             end
         end
 
 
-        function key = structureKey(app, roiName) %#ok<INUSD>
-            % Forgiving matcher for common structure-name variants.
+        function key = structureKey(app,roiName) %#ok<INUSD>
 
             n = lower(strtrim(string(roiName)));
+            n = regexprep(n,'[ _-]*fx[1-6]\s*$','');
+            n = regexprep(n,'[^a-z0-9]+','');
 
-            % Remove terminal fraction notation:
-            % _fx1, -fx1, " fx1", etc.
-            n = regexprep(n, '[ _-]*fx[1-6]\s*$', '');
-
-            % Normalize punctuation/spaces.
-            n = regexprep(n, '[^a-z0-9]+', '_');
-            n = strip(n, '_');
-
-            % Compact representation ignores separators.
-            compact = erase(n, '_');
-
-            if contains(compact, "gtvres")
+            if contains(n,'gtvres')
                 key = "gtvres";
-
-            elseif contains(compact, "ctvhr")
-                key = "ctv_hr";
-
-            elseif contains(compact, "ctvir")
-                key = "ctv_ir";
-
-            elseif contains(compact, "bladder")
+            elseif contains(n,'ctvhr')
+                key = "ctvhr";
+            elseif contains(n,'ctvir')
+                key = "ctvir";
+            elseif contains(n,'bladder')
                 key = "bladder";
-
-            elseif contains(compact, "rectum")
+            elseif contains(n,'rectum')
                 key = "rectum";
-
-            elseif contains(compact, "sigmoid")
+            elseif contains(n,'sigmoid')
                 key = "sigmoid";
-
-            elseif contains(compact, "bowel") || contains(compact, "intestin")
+            elseif contains(n,'bowel') || contains(n,'intestin')
                 key = "bowel";
-
             else
                 key = "";
             end
         end
 
 
-        function d = doseAtVolume(app, doseGy, volCC, targetCC) %#ok<INUSD>
-            % Interpolate cumulative DVH dose at a requested absolute volume.
+        function dose = doseAtVolume(app,doseGy,volumeCC,targetCC) %#ok<INUSD>
 
             doseGy = doseGy(:);
-            volCC  = volCC(:);
+            volumeCC = volumeCC(:);
 
-            valid = isfinite(doseGy) & isfinite(volCC);
+            valid = isfinite(doseGy) & isfinite(volumeCC);
             doseGy = doseGy(valid);
-            volCC  = volCC(valid);
+            volumeCC = volumeCC(valid);
 
             if isempty(doseGy)
-                d = NaN;
+                dose = NaN;
                 return
             end
 
-            [doseGy, idx] = sort(doseGy, 'ascend');
-            volCC = volCC(idx);
+            [doseGy,idx] = sort(doseGy,'ascend');
+            volumeCC = volumeCC(idx);
 
-            %% Remove duplicate dose points by keeping minimum cumulative volume
-            [uniqueDose, ~, grp] = unique(doseGy, 'stable');
+            dose = NaN;
 
-            if numel(uniqueDose) ~= numel(doseGy)
-                newVol = zeros(size(uniqueDose));
-                for k = 1:numel(uniqueDose)
-                    newVol(k) = min(volCC(grp == k));
-                end
-                doseGy = uniqueDose;
-                volCC = newVol;
-            end
-
-            %% Search for crossing
             for i = 1:numel(doseGy)-1
-                v1 = volCC(i);
-                v2 = volCC(i+1);
+                v1 = volumeCC(i);
+                v2 = volumeCC(i+1);
 
                 if (v1 >= targetCC && targetCC >= v2) || ...
                    (v1 <= targetCC && targetCC <= v2)
@@ -530,138 +558,652 @@ classdef EMBRACE2_EQD2_Excel_Autogenerator < matlab.apps.AppBase
                     d2 = doseGy(i+1);
 
                     if abs(v2-v1) < eps
-                        d = d1;
+                        dose = d1;
                     else
                         f = (targetCC-v1)/(v2-v1);
-                        d = d1 + f*(d2-d1);
+                        dose = d1 + f*(d2-d1);
                     end
                     return
                 end
             end
 
-            %% Edge handling
-            [~, nearestIdx] = min(abs(volCC-targetCC));
-            d = doseGy(nearestIdx);
+            [~,nearest] = min(abs(volumeCC-targetCC));
+            dose = doseGy(nearest);
         end
 
 
-        function updates = buildUpdates(app, parsed, results) %#ok<INUSD>
 
-            cols = {'C','D','E','F','G','H'};
-            col = cols{parsed.Fraction};
+        function data = makePriorRTTable(app)
+            data = {
+                'Dose per fraction [Gy]',           app.fmt(1.8), '', ''
+                'Fractions', app.fmt(25),  '', ''
+                'Total dose [Gy]',                  '',           '', ''
+                };
+        end
 
-            map = struct();
 
-            map.gtvres.volume = 38;
-            map.gtvres.D98 = 39;
+        function priorRTEdit(app,source,event)
+            row = event.Indices(1);
+            col = event.Indices(2);
 
-            map.ctv_hr.volume = 42;
-            map.ctv_hr.D98 = 43;
-            map.ctv_hr.D90 = 45;
-            map.ctv_hr.D50 = 47;
+            if col ~= 2 || row > 2
+                data = source.Data;
+                data{row,col} = event.PreviousData;
+                source.Data = data;
+                return
+            end
 
-            map.ctv_ir.volume = 50;
-            map.ctv_ir.D98 = 51;
-            map.ctv_ir.D90 = 53;
+            value = app.toNumber(event.NewData);
 
-            map.bladder.volume = 56;
-            map.bladder.D0p1cc = 59;
-            map.bladder.D2cc = 61;
+            if isnan(value) || value < 0
+                data = source.Data;
+                data{row,col} = event.PreviousData;
+                source.Data = data;
+                return
+            end
 
-            map.rectum.volume = 64;
-            map.rectum.D0p1cc = 67;
-            map.rectum.D2cc = 69;
+            if row == 2
+                value = round(value);
+            end
 
-            map.sigmoid.volume = 72;
-            map.sigmoid.D0p1cc = 73;
-            map.sigmoid.D2cc = 75;
+            data = source.Data;
+            data{row,col} = app.fmt(value);
+            source.Data = data;
 
-            map.bowel.volume = 78;
-            map.bowel.D0p1cc = 79;
-            map.bowel.D2cc = 81;
+            app.recalculateAll();
+        end
 
-            updates = struct();
 
-            structures = fieldnames(results);
+        function [dosePerFx,nFractions,totalDose,tumourEQD2,oarEQD2] = priorRTValues(app)
+            data = app.PriorRTTable.Data;
 
-            for i = 1:numel(structures)
+            dosePerFx = app.toNumber(data{1,2});
+            nFractions = app.toNumber(data{2,2});
 
-                k = structures{i};
+            if isnan(dosePerFx), dosePerFx = 0; end
+            if isnan(nFractions), nFractions = 0; end
 
-                if ~isfield(map, k)
+            totalDose = dosePerFx * nFractions;
+            tumourEQD2 = nFractions * app.eqd2Contribution(dosePerFx,10);
+            oarEQD2 = nFractions * app.eqd2Contribution(dosePerFx,3);
+        end
+
+
+        function updatePriorRTDisplay(app)
+            [~,~,totalDose,tumourEQD2,oarEQD2] = app.priorRTValues();
+
+            data = app.PriorRTTable.Data;
+            data{1,3} = '';
+            data{1,4} = '';
+            data{2,3} = app.fmt(tumourEQD2);
+            data{2,4} = app.fmt(oarEQD2);
+            data{3,2} = app.fmt(totalDose);
+            data{3,3} = app.fmt(tumourEQD2);
+            data{3,4} = app.fmt(oarEQD2);
+            app.PriorRTTable.Data = data;
+        end
+
+
+        function baseline = priorRTEQD2(app,alphaBeta)
+            [dosePerFx,nFractions,~,tumourEQD2,oarEQD2] = app.priorRTValues();
+
+            if alphaBeta == 10
+                baseline = tumourEQD2;
+            elseif alphaBeta == 3
+                baseline = oarEQD2;
+            else
+                baseline = nFractions * app.eqd2Contribution(dosePerFx,alphaBeta);
+            end
+        end
+
+
+        function tableEdit(app,source,event)
+
+            if isequal(source,app.TargetTable)
+                defs = app.TargetDefs;
+            else
+                defs = app.OARDefs;
+            end
+
+            row = event.Indices(1);
+            col = event.Indices(2);
+            rowType = string(defs{row,2});
+
+            if col < 2 || col > 5
+                return
+            end
+
+            % Only section rows with a mapped target volume and physical rows
+            % can be manually edited.
+            editable = (rowType == "physical") || ...
+                (rowType == "section" && strlength(string(defs{row,3})) > 0);
+
+            if ~editable
+                data = source.Data;
+                data{row,col} = event.PreviousData;
+                source.Data = data;
+                return
+            end
+
+            val = app.toNumber(event.NewData);
+
+            if isnan(val)
+                data = source.Data;
+                if isempty(event.NewData) || strlength(string(event.NewData))==0
+                    data{row,col} = '';
+                else
+                    data{row,col} = event.PreviousData;
+                end
+                source.Data = data;
+            else
+                data = source.Data;
+                data{row,col} = app.fmt(val);
+                source.Data = data;
+            end
+
+            app.recalculateAll();
+        end
+
+
+        function recalculateAll(app)
+            app.updatePriorRTDisplay();
+            app.recalculateTable(app.TargetTable,app.TargetDefs,true);
+            app.recalculateTable(app.OARTable,app.OARDefs,false);
+        end
+
+
+        function recalculateTable(app,tableHandle,defs,isTarget)
+
+            data = tableHandle.Data;
+
+            for r = 1:size(defs,1)
+
+                rowType = string(defs{r,2});
+
+                if rowType ~= "eqd"
+                    data{r,6} = '';
                     continue
                 end
 
-                %% Structure volume
-                volumeCell = [col num2str(map.(k).volume)];
-                updates.(volumeCell) = results.(k).VolumeCC;
+                sourceKey = string(defs{r,4});
+                alphaBeta = defs{r,6};
+                ebrt = app.priorRTEQD2(alphaBeta);
 
-                %% Dose metrics
-                metrics = fieldnames(results.(k).Metrics);
+                sourceRow = app.findRowByKey(defs,sourceKey);
 
-                for j = 1:numel(metrics)
-                    metricName = metrics{j};
+                btSum = 0;
+                haveAny = false;
 
-                    if isfield(map.(k), metricName)
-                        value = results.(k).Metrics.(metricName);
+                for fx = 1:4
+                    d = app.toNumber(data{sourceRow,fx+1});
 
-                        if isfinite(value)
-                            cellRef = [col num2str(map.(k).(metricName))];
-                            updates.(cellRef) = value;
-                        end
+                    if isnan(d)
+                        data{r,fx+1} = '';
+                    else
+                        eqd = app.eqd2Contribution(d,alphaBeta);
+                        data{r,fx+1} = app.fmt(eqd);
+                        btSum = btSum + eqd;
+                        haveAny = true;
+                    end
+                end
+
+                if haveAny
+                    total = btSum + ebrt;
+                    data{r,6} = app.fmt(total);
+                else
+                    data{r,6} = '';
+                end
+            end
+
+            tableHandle.Data = data;
+            app.applyTableStyles(tableHandle,defs,isTarget);
+        end
+
+
+        function row = findRowByKey(app,defs,key) %#ok<INUSD>
+            row = NaN;
+
+            for r = 1:size(defs,1)
+                if string(defs{r,3}) == key
+                    row = r;
+                    return
+                end
+            end
+
+            error("Metric mapping not found: " + key);
+        end
+
+
+        function eqd = eqd2Contribution(app,dose,alphaBeta) %#ok<INUSD>
+            eqd = dose .* (1 + dose./alphaBeta) ./ ...
+                (1 + 2./alphaBeta);
+        end
+
+
+        function s = fmt(app,x) %#ok<INUSD>
+            if isempty(x) || ~isfinite(x)
+                s = '';
+            else
+                s = sprintf('%.2f',x);
+            end
+        end
+
+
+        function x = toNumber(app,v) %#ok<INUSD>
+            if isempty(v)
+                x = NaN;
+            elseif isnumeric(v)
+                if isscalar(v) && isfinite(v)
+                    x = double(v);
+                else
+                    x = NaN;
+                end
+            else
+                x = str2double(string(v));
+                if ~isfinite(x)
+                    x = NaN;
+                end
+            end
+        end
+
+
+        function applyTableStyles(app,tableHandle,defs,isTarget) %#ok<INUSD>
+
+            try
+                removeStyle(tableHandle);
+            catch
+            end
+
+            % Center all data/constraint columns. Keep the nomenclature
+            % column left-aligned so it reads like the Excel worksheet.
+            centerStyle = uistyle('HorizontalAlignment','center');
+            for c = 2:8
+                addStyle(tableHandle,centerStyle,'column',c);
+            end
+
+            leftStyle = uistyle('HorizontalAlignment','left');
+            addStyle(tableHandle,leftStyle,'column',1);
+
+            % Match the source workbook:
+            %   physical/current dose rows = light blue
+            %   calculated EQD2 rows       = white
+            %   structure header rows      = light blue and bold
+            for r = 1:size(defs,1)
+
+                rowType = string(defs{r,2});
+
+                if rowType == "spacer"
+                    st = uistyle( ...
+                        'BackgroundColor',[1 1 1], ...
+                        'FontColor',[1 1 1]);
+                    addStyle(tableHandle,st,'row',r);
+
+                elseif rowType == "section"
+                    st = uistyle( ...
+                        'BackgroundColor',app.HeaderBlue, ...
+                        'FontColor',[0 0 0], ...
+                        'FontWeight','bold');
+                    addStyle(tableHandle,st,'row',r);
+
+                elseif rowType == "physical"
+                    st = uistyle( ...
+                        'BackgroundColor',app.CurrentDoseBlue, ...
+                        'FontColor',[0 0 0]);
+                    addStyle(tableHandle,st,'row',r);
+
+                elseif rowType == "eqd"
+                    st = uistyle( ...
+                        'BackgroundColor',app.EQDWhite, ...
+                        'FontColor',[0 0 0]);
+                    addStyle(tableHandle,st,'row',r);
+                end
+            end
+
+            % The two reference columns are narrow white cells with left-aligned text.
+            constraintStyle = uistyle( ...
+                'BackgroundColor',app.ConstraintWhite, ...
+                'FontColor',[0 0 0], ...
+                'HorizontalAlignment','left');
+
+            addStyle(tableHandle,constraintStyle,'column',7);
+            addStyle(tableHandle,constraintStyle,'column',8);
+
+            % TOTAL column stays white unless a constraint applies.
+            totalStyle = uistyle( ...
+                'BackgroundColor',app.EQDWhite, ...
+                'FontColor',[0 0 0], ...
+                'HorizontalAlignment','center', ...
+                'FontWeight','bold');
+            addStyle(tableHandle,totalStyle,'column',6);
+
+            % Color only constrained TOTAL EQD2 cells:
+            % green  = meets preferred/soft goal
+            % yellow = misses preferred goal but meets hard/tolerance
+            % red    = fails hard/tolerance
+            data = tableHandle.Data;
+
+            for r = 1:size(defs,1)
+
+                if string(defs{r,2}) ~= "eqd"
+                    continue
+                end
+
+                total = app.toNumber(data{r,6});
+                goalText = string(defs{r,8});
+                hardText = string(defs{r,9});
+
+                if isnan(total) || ...
+                        (strlength(goalText)==0 && strlength(hardText)==0)
+                    continue
+                end
+
+                [goalMet,goalDefined] = ...
+                    app.meetsConstraint(total,goalText,isTarget);
+                [hardMet,hardDefined] = ...
+                    app.meetsConstraint(total,hardText,isTarget);
+
+                if goalDefined && goalMet
+                    bg = app.PassGreen;
+
+                elseif hardDefined && hardMet
+                    bg = app.WarnYellow;
+
+                elseif hardDefined && ~hardMet
+                    bg = app.FailRed;
+
+                elseif goalDefined && ~goalMet
+                    bg = app.FailRed;
+
+                else
+                    continue
+                end
+
+                st = uistyle( ...
+                    'BackgroundColor',bg, ...
+                    'FontColor',[0 0 0], ...
+                    'HorizontalAlignment','center', ...
+                    'FontWeight','bold');
+
+                addStyle(tableHandle,st,'cell',[r 6]);
+            end
+        end
+
+
+        function [met,defined] = meetsConstraint(app,value,textValue,isTarget) %#ok<INUSD>
+
+            t = strtrim(string(textValue));
+            defined = strlength(t) > 0;
+            met = false;
+
+            if ~defined
+                return
+            end
+
+            % Range, e.g. 90-95.
+            tok = regexp(char(t), ...
+                '^\s*([0-9.]+)\s*-\s*([0-9.]+)\s*$', ...
+                'tokens','once');
+
+            if ~isempty(tok)
+                lo = str2double(tok{1});
+                hi = str2double(tok{2});
+                met = value >= lo && value <= hi;
+                return
+            end
+
+            tok = regexp(char(t), ...
+                '^\s*([<>]=?)\s*([0-9.]+)\s*$', ...
+                'tokens','once');
+
+            if isempty(tok)
+                return
+            end
+
+            op = tok{1};
+            threshold = str2double(tok{2});
+
+            switch op
+                case '>'
+                    met = value > threshold;
+                case '>='
+                    met = value >= threshold;
+                case '<'
+                    met = value < threshold;
+                case '<='
+                    met = value <= threshold;
+            end
+        end
+
+
+        function refreshFileStatus(app)
+
+            parts = strings(1,4);
+
+            for fx = 1:4
+                if strlength(app.LoadedFiles(fx)) == 0
+                    parts(fx) = "Fx" + fx + ": —";
+                else
+                    parts(fx) = "Fx" + fx + ": " + app.LoadedFiles(fx);
+                end
+            end
+
+            app.FileStatusLabel.Text = strjoin(parts,"   |   ");
+        end
+
+
+        function clearAll(app,~)
+
+            answer = uiconfirm( ...
+                app.UIFigure, ...
+                'Clear all Fx1-Fx4 values?', ...
+                'Clear Dashboard', ...
+                'Options',{'Clear','Cancel'}, ...
+                'DefaultOption','Cancel', ...
+                'CancelOption','Cancel');
+
+            if ~strcmp(answer,'Clear')
+                return
+            end
+
+            app.PriorRTTable.Data = app.makePriorRTTable();
+            app.TargetTable.Data = app.makeInitialTable(app.TargetDefs);
+            app.OARTable.Data = app.makeInitialTable(app.OARDefs);
+            app.LoadedFiles(:) = "";
+            app.ExplicitlyLoaded(:) = false;
+
+            app.refreshFileStatus();
+            app.recalculateAll();
+
+            app.StatusLabel.Text = 'Dashboard cleared.';
+        end
+
+
+        function exportDisplay(app,~)
+
+            try
+                templatePath = app.findTemplate();
+
+                defaultBase = "EMBRACE2_EQD2";
+                firstLoaded = find(strlength(app.LoadedFiles)>0,1,'first');
+
+                if ~isempty(firstLoaded)
+                    raw = regexprep(char(app.LoadedFiles(firstLoaded)), ...
+                        '\s+\(carried(?: from Fx\d+)?\)$','');
+                    [~,b,~] = fileparts(raw);
+                    defaultBase = string(b);
+                end
+
+                [file,folder] = uiputfile( ...
+                    {'*.xlsx','Excel Workbook (*.xlsx)'}, ...
+                    'Export EMBRACE-2 EQD2 Workbook', ...
+                    char(defaultBase + ".xlsx"));
+
+                if isequal(file,0)
+                    return
+                end
+
+                outputPath = fullfile(folder,file);
+
+                [ok,msg] = copyfile(templatePath,outputPath,'f');
+
+                if ~ok
+                    error("Could not create output workbook." + newline + string(msg));
+                end
+
+                updates = struct();
+                updates = app.collectPriorRTUpdates(updates);
+                updates = app.collectUpdates(app.TargetTable,app.TargetDefs,updates);
+                updates = app.collectUpdates(app.OARTable,app.OARDefs,updates);
+
+                if isempty(fieldnames(updates))
+                    delete(outputPath);
+                    error('There are no Fx1-Fx4 values to export.');
+                end
+
+                updatedSheets = app.writeWorkbook(outputPath,updates);
+
+                app.StatusLabel.Text = "Exported: " + string(outputPath);
+
+                uialert(app.UIFigure, ...
+                    sprintf(['Workbook exported successfully.\n\n' ...
+                    'Updated sheets:\n%s\n\nSaved to:\n%s'], ...
+                    strjoin(updatedSheets,newline),outputPath), ...
+                    'Export Complete','Icon','success');
+
+            catch ME
+                uialert(app.UIFigure,ME.message, ...
+                    'Excel Export Error','Icon','error');
+            end
+        end
+
+
+
+        function updates = collectPriorRTUpdates(app,updates)
+            % Existing workbook formulas use:
+            % C6 = dose per fraction
+            % C7 = fractions without central shield
+            data = app.PriorRTTable.Data;
+
+            dosePerFx = app.toNumber(data{1,2});
+            nFractions = app.toNumber(data{2,2});
+
+            if ~isnan(dosePerFx)
+                updates.C6 = dosePerFx;
+            end
+            if ~isnan(nFractions)
+                updates.C7 = nFractions;
+            end
+        end
+
+
+        function updates = collectUpdates(app,tableHandle,defs,updates)
+
+            data = tableHandle.Data;
+            excelCols = {'C','D','E','F'};
+
+            for r = 1:size(defs,1)
+
+                rowType = string(defs{r,2});
+                excelRow = defs{r,5};
+                key = string(defs{r,3});
+
+                % Volume section rows are no longer shown per-fraction in
+                % the GUI. They are therefore not exported from the display.
+                if rowType ~= "physical" || isnan(excelRow) || strlength(key)==0
+                    continue
+                end
+
+                for fx = 1:4
+                    value = app.toNumber(data{r,fx+1});
+
+                    if ~isnan(value)
+                        ref = [excelCols{fx} num2str(excelRow)];
+                        updates.(ref) = value;
                     end
                 end
             end
         end
 
 
-        function updatedSheets = populateWorkbook(app, outputPath, updates)
+        function templatePath = findTemplate(app)
 
-            if ~isfile(outputPath)
-                error("Output workbook does not exist:" + newline + string(outputPath));
+            templateName = 'EQD2_with_tolerances_090126.xlsx';
+            candidates = strings(0,1);
+
+            p = which(templateName);
+            if ~isempty(p)
+                candidates(end+1) = string(p);
             end
 
-            %% Canonical full path
-            [status, attr] = fileattrib(outputPath);
-            if status
-                outputPath = attr.Name;
+            classFile = which(class(app));
+            if ~isempty(classFile)
+                candidates(end+1) = string(fullfile( ...
+                    fileparts(classFile),templateName));
             end
 
-            %% Identify relevant sheets using MATLAB
+            candidates(end+1) = string(fullfile(pwd,templateName));
+            candidates = unique(candidates,'stable');
+
+            for i = 1:numel(candidates)
+                if isfile(candidates(i))
+                    [status,attr] = fileattrib(char(candidates(i)));
+
+                    if status
+                        templatePath = attr.Name;
+                    else
+                        templatePath = char(candidates(i));
+                    end
+                    return
+                end
+            end
+
+            error("Could not find " + templateName + "." + newline + ...
+                "Keep it beside this MATLAB app or on the MATLAB path.");
+        end
+
+
+        function updatedSheets = writeWorkbook(app,outputPath,updates)
+
             allSheets = string(sheetnames(outputPath));
-            targetSheets = allSheets(contains(upper(allSheets), "FX1-4"));
+            targetSheets = allSheets(contains(upper(allSheets),"FX1-4"));
 
             if isempty(targetSheets)
-                error('No worksheet containing "FX1-4" was found in the EQD2 template.');
+                error('No worksheet containing "FX1-4" was found.');
             end
 
             refs = fieldnames(updates);
 
-            %% Preferred Windows path: one Excel session for entire workbook
             if ispc
                 excel = [];
-                wb = [];
+                workbook = [];
 
                 try
+                    [status,attr] = fileattrib(outputPath);
+
+                    if status
+                        fullPath = attr.Name;
+                    else
+                        fullPath = outputPath;
+                    end
+
                     excel = actxserver('Excel.Application');
                     excel.Visible = false;
                     excel.DisplayAlerts = false;
 
-                    wb = excel.Workbooks.Open(char(outputPath));
+                    workbook = excel.Workbooks.Open(char(fullPath));
 
                     for s = 1:numel(targetSheets)
-                        ws = wb.Worksheets.Item(char(targetSheets(s)));
+                        ws = workbook.Worksheets.Item(char(targetSheets(s)));
 
                         for i = 1:numel(refs)
                             ws.Range(refs{i}).Value = updates.(refs{i});
                         end
                     end
 
-                    %% Force all EQD2 formulas to update
                     excel.CalculateFullRebuild;
+                    workbook.Save;
+                    workbook.Close(false);
 
-                    wb.Save;
-                    wb.Close(false);
                     excel.Quit;
                     delete(excel);
 
@@ -669,10 +1211,9 @@ classdef EMBRACE2_EQD2_Excel_Autogenerator < matlab.apps.AppBase
                     return
 
                 catch ME
-                    %% Clean up COM objects
                     try
-                        if ~isempty(wb)
-                            wb.Close(false);
+                        if ~isempty(workbook)
+                            workbook.Close(false);
                         end
                     catch
                     end
@@ -685,19 +1226,17 @@ classdef EMBRACE2_EQD2_Excel_Autogenerator < matlab.apps.AppBase
                     catch
                     end
 
-                    app.appendLog("Excel automation failed; using MATLAB fallback.");
-                    app.appendLog("Excel message: " + string(ME.message));
+                    warning("Excel automation failed: %s",ME.message);
                 end
             end
 
-            %% MATLAB fallback
             for s = 1:numel(targetSheets)
                 for i = 1:numel(refs)
                     writematrix( ...
                         updates.(refs{i}), ...
                         outputPath, ...
-                        'Sheet', char(targetSheets(s)), ...
-                        'Range', refs{i});
+                        'Sheet',char(targetSheets(s)), ...
+                        'Range',refs{i});
                 end
             end
 
@@ -705,327 +1244,223 @@ classdef EMBRACE2_EQD2_Excel_Autogenerator < matlab.apps.AppBase
         end
 
 
-        function out = makeOutputName(app, txtPath, parsed) %#ok<INUSD>
-            % Save the completed workbook using the same base filename
-            % as the selected TXT file.
-            %
-            % Example:
-            %   DVH_absolute_v2.txt  ->  DVH_absolute_v2.xlsx
+        function configureTable(app,tbl,columnNames)
 
-            [folder, baseName, ~] = fileparts(txtPath);
-
-            % If the selected TXT folder is not writable,
-            % fall back to the MATLAB Current Folder.
-            testFile = fullfile(folder, ...
-                ['.__eqd2_write_test_' char(java.util.UUID.randomUUID) '.tmp']);
-
-            canWrite = false;
-
-            try
-                fid = fopen(testFile, 'w');
-
-                if fid > 0
-                    fclose(fid);
-                    delete(testFile);
-                    canWrite = true;
-                end
-            catch
-            end
-
-            if ~canWrite
-                folder = pwd;
-            end
-
-            out = fullfile(folder, [baseName '.xlsx']);
-        end
-
-
-                function out = makeUniquePath(app, out) %#ok<INUSD>
-            if ~isfile(out)
-                return
-            end
-
-            [folder, name, ext] = fileparts(out);
-
-            k = 2;
-            while true
-                candidate = fullfile(folder, sprintf('%s_%d%s', name, k, ext));
-
-                if ~isfile(candidate)
-                    out = candidate;
-                    return
-                end
-
-                k = k + 1;
-            end
-        end
-
-
-        function appendLog(app, message)
-            message = string(message);
-
-            if isempty(app.DetailsArea.Value)
-                current = strings(0,1);
-            else
-                current = string(app.DetailsArea.Value);
-            end
-
-            newLines = splitlines(message);
-            current = [current; newLines];
-
-            app.DetailsArea.Value = cellstr(current);
-            drawnow;
-        end
-
-
-        function clearLog(app, ~)
-            app.DetailsArea.Value = {};
-            app.appendLog("Ready. Select a DVH TXT file to begin.");
-        end
-
-
-        function out = displayOrDash(app, value) %#ok<INUSD>
-            value = string(value);
-
-            if strlength(strtrim(value)) == 0
-                out = "—";
-            else
-                out = value;
-            end
+            tbl.ColumnName = columnNames;
+            tbl.ColumnWidth = {245,82,82,82,82,120,105,105};
+            tbl.ColumnEditable = [false true true true true false false false];
+            tbl.RowName = {};
+            tbl.FontName = 'Arial';
+            tbl.FontSize = 11;
+            tbl.ForegroundColor = [0 0 0];
+            tbl.BackgroundColor = [1 1 1];
+            tbl.CellEditCallback = @(s,e)app.tableEdit(s,e);
         end
 
 
         function createComponents(app)
 
-            %% Main window
-            app.UIFigure = uifigure('Visible','off');
-            app.UIFigure.Position = [100 75 900 760];
-            app.UIFigure.Name = 'EMBRACE-2 EQD2 Excel Autogenerator';
-            app.UIFigure.Color = app.UFDarkBlue;
+            app.initializeDefinitions();
 
-            app.MainGrid = uigridlayout(app.UIFigure, [7 1]);
-            app.MainGrid.RowHeight = {95, 78, 90, 160, '1x', 105, 42};
-            app.MainGrid.RowSpacing = 10;
-            app.MainGrid.Padding = [0 0 0 0];
+            app.UIFigure = uifigure('Visible','off');
+            app.UIFigure.Name = 'EMBRACE-2 EQD2 Excel Autogenerator';
+            app.UIFigure.Position = [70 20 1055 980];
+            app.UIFigure.Color = app.Black;
+
+            app.MainGrid = uigridlayout(app.UIFigure,[9 1]);
+            app.MainGrid.BackgroundColor = app.Black;
+            app.MainGrid.RowHeight = {52,78,26,105,26,250,26,'1x',60};
+            app.MainGrid.RowSpacing = 6;
+            app.MainGrid.Padding = [12 8 12 8];
 
             %% Header
             app.HeaderPanel = uipanel(app.MainGrid);
-            app.HeaderPanel.BackgroundColor = app.UFDarkBlue;
+            app.HeaderPanel.Layout.Row = 1;
+            app.HeaderPanel.BackgroundColor = app.Black;
             app.HeaderPanel.BorderType = 'none';
 
-            app.HeaderGrid = uigridlayout(app.HeaderPanel, [1 3]);
-            app.HeaderGrid.ColumnWidth = {90, '1x', 250};
-            app.HeaderGrid.Padding = [24 10 24 10];
-            app.HeaderGrid.ColumnSpacing = 12;
+            app.HeaderGrid = uigridlayout(app.HeaderPanel,[1 2]);
+            app.HeaderGrid.BackgroundColor = app.Black;
+            app.HeaderGrid.ColumnWidth = {'1x',170};
+            app.HeaderGrid.Padding = [0 0 0 0];
 
-            app.UFLabel = uilabel(app.HeaderGrid);
-            app.UFLabel.Text = 'UF';
-            app.UFLabel.FontSize = 34;
-            app.UFLabel.FontWeight = 'bold';
-            app.UFLabel.FontColor = [1 1 1];
-            app.UFLabel.HorizontalAlignment = 'center';
-
-            app.InstituteLabel = uilabel(app.HeaderGrid);
-            app.InstituteLabel.Text = sprintf('UF PROTON INSTITUTE\nDepartment of Radiation Oncology');
-            app.InstituteLabel.FontSize = 18;
-            app.InstituteLabel.FontWeight = 'bold';
-            app.InstituteLabel.FontColor = [1 1 1];
-
-            app.HeaderTagline = uilabel(app.HeaderGrid);
-            app.HeaderTagline.Text = sprintf('PEOPLE   |   PURPOSE   |   PROTONS\nHEAL TODAY. BRIGHTER TOMORROWS.');
-            app.HeaderTagline.FontSize = 11;
-            app.HeaderTagline.FontColor = [1 1 1];
-            app.HeaderTagline.HorizontalAlignment = 'right';
-
-            %% Title
-            titlePanel = uipanel(app.MainGrid);
-            titlePanel.BorderType = 'none';
-            titlePanel.BackgroundColor = app.UFDarkBlue;
-
-            titleGrid = uigridlayout(titlePanel, [2 1]);
-            titleGrid.RowHeight = {44, 24};
-            titleGrid.Padding = [20 4 20 4];
-            titleGrid.RowSpacing = 0;
-
-            app.TitleLabel = uilabel(titleGrid);
-            app.TitleLabel.Text = 'EMBRACE-2 EQD2 Excel Autogenerator';
-            app.TitleLabel.FontSize = 25;
+            app.TitleLabel = uilabel(app.HeaderGrid);
+            app.TitleLabel.Text = 'EMBRACE-2  EQD2 Excel Autogenerator';
+            app.TitleLabel.FontSize = 22;
             app.TitleLabel.FontWeight = 'bold';
-            app.TitleLabel.FontColor = [1 1 1];
-            app.TitleLabel.HorizontalAlignment = 'center';
+            app.TitleLabel.FontColor = app.White;
 
-            app.SubtitleLabel = uilabel(titleGrid);
-            app.SubtitleLabel.Text = ...
-                'Select a DVH TXT file and automatically generate the populated EQD2 workbook.';
-            app.SubtitleLabel.FontSize = 13;
-            app.SubtitleLabel.FontColor = [1 1 1];
-            app.SubtitleLabel.HorizontalAlignment = 'center';
+            app.BrandLabel = uilabel(app.HeaderGrid);
+            app.BrandLabel.Text = 'UF PROTON INSTITUTE';
+            app.BrandLabel.FontSize = 11;
+            app.BrandLabel.FontWeight = 'bold';
+            app.BrandLabel.FontColor = app.UFOrange;
+            app.BrandLabel.HorizontalAlignment = 'right';
 
-            %% Workflow
-            app.WorkflowPanel = uipanel(app.MainGrid);
-            app.WorkflowPanel.BackgroundColor = [0.035 0.245 0.50];
-            app.WorkflowPanel.BorderColor = [0.35 0.60 0.85];
+            %% Compact equal-width load buttons
+            app.LoadPanel = uipanel(app.MainGrid);
+            app.LoadPanel.Layout.Row = 2;
+            app.LoadPanel.BackgroundColor = app.NearBlack;
+            app.LoadPanel.BorderColor = [0.18 0.18 0.20];
 
-            app.WorkflowGrid = uigridlayout(app.WorkflowPanel, [1 5]);
-            app.WorkflowGrid.ColumnWidth = {'1x',50,'1x',50,'1x'};
-            app.WorkflowGrid.Padding = [22 14 22 14];
+            app.LoadGrid = uigridlayout(app.LoadPanel,[2 6]);
+            app.LoadGrid.BackgroundColor = app.NearBlack;
+            app.LoadGrid.RowHeight = {34,22};
+            app.LoadGrid.ColumnWidth = {'1x',115,115,115,115,'1x'};
+            app.LoadGrid.ColumnSpacing = 8;
+            app.LoadGrid.Padding = [10 6 10 5];
 
-            app.Step1Label = uilabel(app.WorkflowGrid);
-            app.Step1Label.Text = sprintf('1  SELECT DVH\nTXT FILE');
-            app.Step1Label.FontSize = 14;
-            app.Step1Label.FontWeight = 'bold';
-            app.Step1Label.FontColor = [1 1 1];
-            app.Step1Label.HorizontalAlignment = 'center';
+            app.LoadLabel = uilabel(app.LoadGrid);
+            app.LoadLabel.Text = 'BRACHYTHERAPY FRACTIONS';
+            app.LoadLabel.FontWeight = 'bold';
+            app.LoadLabel.FontColor = app.White;
+            app.LoadLabel.Layout.Row = 1;
+            app.LoadLabel.Layout.Column = 1;
 
-            app.Arrow1Label = uilabel(app.WorkflowGrid);
-            app.Arrow1Label.Text = '→';
-            app.Arrow1Label.FontSize = 28;
-            app.Arrow1Label.FontWeight = 'bold';
-            app.Arrow1Label.FontColor = app.UFOrange;
-            app.Arrow1Label.HorizontalAlignment = 'center';
+            app.Fx1Button = uibutton(app.LoadGrid,'push');
+            app.Fx1Button.Text = 'Load F1';
+            app.Fx1Button.FontWeight = 'bold';
+            app.Fx1Button.BackgroundColor = app.UFBlue;
+            app.Fx1Button.FontColor = app.White;
+            app.Fx1Button.ButtonPushedFcn = @(s,e)app.loadFraction(1);
+            app.Fx1Button.Layout.Row = 1;
+            app.Fx1Button.Layout.Column = 2;
 
-            app.Step2Label = uilabel(app.WorkflowGrid);
-            app.Step2Label.Text = sprintf('2  CALCULATE\nDVH METRICS');
-            app.Step2Label.FontSize = 14;
-            app.Step2Label.FontWeight = 'bold';
-            app.Step2Label.FontColor = [1 1 1];
-            app.Step2Label.HorizontalAlignment = 'center';
+            app.Fx2Button = uibutton(app.LoadGrid,'push');
+            app.Fx2Button.Text = 'Load F2';
+            app.Fx2Button.FontWeight = 'bold';
+            app.Fx2Button.BackgroundColor = app.UFBlue;
+            app.Fx2Button.FontColor = app.White;
+            app.Fx2Button.ButtonPushedFcn = @(s,e)app.loadFraction(2);
+            app.Fx2Button.Layout.Row = 1;
+            app.Fx2Button.Layout.Column = 3;
 
-            app.Arrow2Label = uilabel(app.WorkflowGrid);
-            app.Arrow2Label.Text = '→';
-            app.Arrow2Label.FontSize = 28;
-            app.Arrow2Label.FontWeight = 'bold';
-            app.Arrow2Label.FontColor = app.UFOrange;
-            app.Arrow2Label.HorizontalAlignment = 'center';
+            app.Fx3Button = uibutton(app.LoadGrid,'push');
+            app.Fx3Button.Text = 'Load F3';
+            app.Fx3Button.FontWeight = 'bold';
+            app.Fx3Button.BackgroundColor = app.UFBlue;
+            app.Fx3Button.FontColor = app.White;
+            app.Fx3Button.ButtonPushedFcn = @(s,e)app.loadFraction(3);
+            app.Fx3Button.Layout.Row = 1;
+            app.Fx3Button.Layout.Column = 4;
 
-            app.Step3Label = uilabel(app.WorkflowGrid);
-            app.Step3Label.Text = sprintf('3  GENERATE\nEQD2 EXCEL FILE');
-            app.Step3Label.FontSize = 14;
-            app.Step3Label.FontWeight = 'bold';
-            app.Step3Label.FontColor = [1 1 1];
-            app.Step3Label.HorizontalAlignment = 'center';
+            app.Fx4Button = uibutton(app.LoadGrid,'push');
+            app.Fx4Button.Text = 'Load F4';
+            app.Fx4Button.FontWeight = 'bold';
+            app.Fx4Button.BackgroundColor = app.UFBlue;
+            app.Fx4Button.FontColor = app.White;
+            app.Fx4Button.ButtonPushedFcn = @(s,e)app.loadFraction(4);
+            app.Fx4Button.Layout.Row = 1;
+            app.Fx4Button.Layout.Column = 5;
 
-            %% Input panel
-            app.InputPanel = uipanel(app.MainGrid);
-            app.InputPanel.BackgroundColor = [0.035 0.245 0.50];
-            app.InputPanel.BorderColor = [0.35 0.60 0.85];
+            app.FileStatusLabel = uilabel(app.LoadGrid);
+            app.FileStatusLabel.FontSize = 9;
+            app.FileStatusLabel.FontColor = app.Muted;
+            app.FileStatusLabel.Layout.Row = 2;
+            app.FileStatusLabel.Layout.Column = [1 6];
 
-            app.InputGrid = uigridlayout(app.InputPanel, [1 2]);
-            app.InputGrid.ColumnWidth = {'1.05x','0.95x'};
-            app.InputGrid.Padding = [18 18 18 18];
-            app.InputGrid.ColumnSpacing = 24;
+            %% Prior RT / EBRT fractionation
+            app.PriorRTHeader = uilabel(app.MainGrid);
+            app.PriorRTHeader.Layout.Row = 3;
+            app.PriorRTHeader.Text = 'PRIOR RT / EBRT FRACTIONATION';
+            app.PriorRTHeader.FontSize = 14;
+            app.PriorRTHeader.FontWeight = 'bold';
+            app.PriorRTHeader.FontColor = app.White;
 
-            app.SelectButton = uibutton(app.InputGrid, 'push');
-            app.SelectButton.Text = 'SELECT DVH TXT FILE...';
-            app.SelectButton.FontSize = 18;
-            app.SelectButton.FontWeight = 'bold';
-            app.SelectButton.FontColor = [1 1 1];
-            app.SelectButton.BackgroundColor = app.UFOrange;
-            app.SelectButton.ButtonPushedFcn = @(s,e)app.selectAndProcess(e);
+            app.PriorRTTable = uitable(app.MainGrid);
+            app.PriorRTTable.Layout.Row = 4;
+            app.PriorRTTable.Data = app.makePriorRTTable();
+            app.PriorRTTable.ColumnName = { ...
+                'Parameter', ...
+                'Value', ...
+                'Tumour EQD210 [Gy]', ...
+                'OAR EQD23 [Gy]'};
+            app.PriorRTTable.ColumnWidth = {300,130,190,190};
+            app.PriorRTTable.ColumnEditable = [false true false false];
+            app.PriorRTTable.RowName = {};
+            app.PriorRTTable.FontName = 'Arial';
+            app.PriorRTTable.FontSize = 11;
+            app.PriorRTTable.ForegroundColor = [0 0 0];
+            app.PriorRTTable.BackgroundColor = [1 1 1];
+            app.PriorRTTable.CellEditCallback = @(s,e)app.priorRTEdit(s,e);
 
-            app.FileInfoGrid = uigridlayout(app.InputGrid, [5 1]);
-            app.FileInfoGrid.RowHeight = {'1x','1x','1x','1x','1x'};
-            app.FileInfoGrid.Padding = [4 2 4 2];
-            app.FileInfoGrid.RowSpacing = 3;
+            inputStyle = uistyle( ...
+                'BackgroundColor',app.CurrentDoseBlue, ...
+                'FontColor',[0 0 0], ...
+                'HorizontalAlignment','center');
+            addStyle(app.PriorRTTable,inputStyle,'cell',[1 2]);
+            addStyle(app.PriorRTTable,inputStyle,'cell',[2 2]);
 
-            app.FileNameLabel = uilabel(app.FileInfoGrid);
-            app.FileNameLabel.Text = 'File: —';
-            app.FileNameLabel.FontSize = 12;
-            app.FileNameLabel.FontColor = [1 1 1];
+            centerPriorStyle = uistyle('HorizontalAlignment','center');
+            addStyle(app.PriorRTTable,centerPriorStyle,'column',2);
+            addStyle(app.PriorRTTable,centerPriorStyle,'column',3);
+            addStyle(app.PriorRTTable,centerPriorStyle,'column',4);
 
-            app.PatientLabel = uilabel(app.FileInfoGrid);
-            app.PatientLabel.Text = 'Patient: —';
-            app.PatientLabel.FontSize = 12;
-            app.PatientLabel.FontColor = [1 1 1];
+            %% Target section
+            app.TargetHeader = uilabel(app.MainGrid);
+            app.TargetHeader.Layout.Row = 5;
+            app.TargetHeader.Text = 'TARGETS';
+            app.TargetHeader.FontSize = 14;
+            app.TargetHeader.FontWeight = 'bold';
+            app.TargetHeader.FontColor = app.White;
 
-            app.PatientIDLabel = uilabel(app.FileInfoGrid);
-            app.PatientIDLabel.Text = 'Patient ID: —';
-            app.PatientIDLabel.FontSize = 12;
-            app.PatientIDLabel.FontColor = [1 1 1];
+            app.TargetTable = uitable(app.MainGrid);
+            app.TargetTable.Layout.Row = 6;
+            app.TargetTable.Data = app.makeInitialTable(app.TargetDefs);
 
-            app.PlanLabel = uilabel(app.FileInfoGrid);
-            app.PlanLabel.Text = 'Plan: —';
-            app.PlanLabel.FontSize = 12;
-            app.PlanLabel.FontColor = [1 1 1];
+            app.configureTable(app.TargetTable,{ ...
+                'Structure / Dose Parameter [units]', ...
+                'F1','F2','F3','F4', ...
+                'TOTAL BT + EBT', ...
+                'Planning Goal', ...
+                'Tolerance'});
 
-            app.FractionLabel = uilabel(app.FileInfoGrid);
-            app.FractionLabel.Text = 'Detected Fraction: —';
-            app.FractionLabel.FontSize = 12;
-            app.FractionLabel.FontWeight = 'bold';
-            app.FractionLabel.FontColor = [1 1 1];
+            %% OAR section
+            app.OARHeader = uilabel(app.MainGrid);
+            app.OARHeader.Layout.Row = 7;
+            app.OARHeader.Text = 'ORGANS AT RISK';
+            app.OARHeader.FontSize = 14;
+            app.OARHeader.FontWeight = 'bold';
+            app.OARHeader.FontColor = app.White;
 
-            %% Log
-            app.LogPanel = uipanel(app.MainGrid);
-            app.LogPanel.BackgroundColor = [0.035 0.245 0.50];
-            app.LogPanel.BorderColor = [0.35 0.60 0.85];
+            app.OARTable = uitable(app.MainGrid);
+            app.OARTable.Layout.Row = 8;
+            app.OARTable.Data = app.makeInitialTable(app.OARDefs);
 
-            app.LogGrid = uigridlayout(app.LogPanel, [2 2]);
-            app.LogGrid.RowHeight = {32,'1x'};
-            app.LogGrid.ColumnWidth = {'1x',110};
-            app.LogGrid.Padding = [16 10 16 14];
-
-            app.LogHeaderLabel = uilabel(app.LogGrid);
-            app.LogHeaderLabel.Text = 'Processing Log';
-            app.LogHeaderLabel.FontSize = 15;
-            app.LogHeaderLabel.FontWeight = 'bold';
-            app.LogHeaderLabel.FontColor = [1 1 1];
-
-            app.ClearLogButton = uibutton(app.LogGrid, 'push');
-            app.ClearLogButton.Text = 'Clear Log';
-            app.ClearLogButton.ButtonPushedFcn = @(s,e)app.clearLog(e);
-
-            app.DetailsArea = uitextarea(app.LogGrid);
-            app.DetailsArea.Layout.Row = 2;
-            app.DetailsArea.Layout.Column = [1 2];
-            app.DetailsArea.Editable = 'off';
-            app.DetailsArea.FontName = 'Consolas';
-            app.DetailsArea.FontSize = 11;
-            app.DetailsArea.BackgroundColor = [0.995 0.995 0.995];
-
-            %% Notes
-            app.NotesPanel = uipanel(app.MainGrid);
-            app.NotesPanel.BackgroundColor = [0.035 0.245 0.50];
-            app.NotesPanel.BorderColor = [0.35 0.60 0.85];
-
-            app.NotesGrid = uigridlayout(app.NotesPanel, [2 1]);
-            app.NotesGrid.RowHeight = {26,'1x'};
-            app.NotesGrid.Padding = [18 10 18 10];
-            app.NotesGrid.RowSpacing = 3;
-
-            app.NotesTitle = uilabel(app.NotesGrid);
-            app.NotesTitle.Text = 'Notes';
-            app.NotesTitle.FontSize = 15;
-            app.NotesTitle.FontWeight = 'bold';
-            app.NotesTitle.FontColor = [1 1 1];
-
-            app.NotesLabel = uilabel(app.NotesGrid);
-            app.NotesLabel.Text = sprintf([ ...
-                '• Keep EQD2_with_tolerances_090126.xlsx with this app or on the MATLAB path.\n' ...
-                '• The app detects Fx1-Fx6, converts cGy to Gy when needed, and populates all FX1-4 sheets.\n' ...
-                '• The Excel file uses the same base name as the selected TXT file and is saved beside it when writable.\n' ...
-                '• Validate generated metrics/workbook against the clinical workflow before clinical use.']);
-            app.NotesLabel.FontSize = 11;
-            app.NotesLabel.FontColor = [1 1 1];
+            app.configureTable(app.OARTable,{ ...
+                'Structure / Dose Parameter [units]', ...
+                'F1','F2','F3','F4', ...
+                'TOTAL BT + EBT', ...
+                'Soft Constraints', ...
+                'Hard Constraints'});
 
             %% Footer
             app.FooterPanel = uipanel(app.MainGrid);
-            app.FooterPanel.BackgroundColor = app.UFDarkBlue;
+            app.FooterPanel.Layout.Row = 9;
+            app.FooterPanel.BackgroundColor = app.Black;
             app.FooterPanel.BorderType = 'none';
 
-            app.FooterGrid = uigridlayout(app.FooterPanel, [1 2]);
-            app.FooterGrid.ColumnWidth = {'1x','1x'};
-            app.FooterGrid.Padding = [20 4 20 4];
+            app.FooterGrid = uigridlayout(app.FooterPanel,[1 3]);
+            app.FooterGrid.BackgroundColor = app.Black;
+            app.FooterGrid.ColumnWidth = {'1x',110,285};
+            app.FooterGrid.ColumnSpacing = 10;
+            app.FooterGrid.Padding = [0 6 0 2];
 
-            app.FooterLeft = uilabel(app.FooterGrid);
-            app.FooterLeft.Text = 'UF Proton Institute  |  Radiation Oncology';
-            app.FooterLeft.FontColor = [1 1 1];
-            app.FooterLeft.FontSize = 10;
+            app.StatusLabel = uilabel(app.FooterGrid);
+            app.StatusLabel.Text = 'Ready';
+            app.StatusLabel.FontSize = 10;
+            app.StatusLabel.FontColor = app.Muted;
 
-            app.FooterRight = uilabel(app.FooterGrid);
-            app.FooterRight.Text = 'EMBRACE-2  |  EQD2 AUTOMATION';
-            app.FooterRight.FontColor = [1 1 1];
-            app.FooterRight.FontSize = 10;
-            app.FooterRight.HorizontalAlignment = 'right';
+            app.ClearButton = uibutton(app.FooterGrid,'push');
+            app.ClearButton.Text = 'Clear All';
+            app.ClearButton.ButtonPushedFcn = @(s,e)app.clearAll(e);
+
+            app.ExportButton = uibutton(app.FooterGrid,'push');
+            app.ExportButton.Text = 'EXPORT CURRENT DISPLAY TO EXCEL';
+            app.ExportButton.FontWeight = 'bold';
+            app.ExportButton.FontColor = app.White;
+            app.ExportButton.BackgroundColor = app.UFOrange;
+            app.ExportButton.ButtonPushedFcn = @(s,e)app.exportDisplay(e);
 
             app.UIFigure.Visible = 'on';
         end
@@ -1035,9 +1470,10 @@ classdef EMBRACE2_EQD2_Excel_Autogenerator < matlab.apps.AppBase
     methods (Access = public)
 
         function app = EMBRACE2_EQD2_Excel_Autogenerator
-            createComponents(app);
-            registerApp(app, app.UIFigure);
-            runStartupFcn(app, @startupFcn);
+
+            app.createComponents();
+            registerApp(app,app.UIFigure);
+            runStartupFcn(app,@startupFcn);
 
             if nargout == 0
                 clear app
@@ -1046,6 +1482,7 @@ classdef EMBRACE2_EQD2_Excel_Autogenerator < matlab.apps.AppBase
 
 
         function delete(app)
+
             if ~isempty(app.UIFigure) && isvalid(app.UIFigure)
                 delete(app.UIFigure);
             end
