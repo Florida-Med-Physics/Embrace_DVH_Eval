@@ -45,6 +45,7 @@ classdef EMBRACE2_EQD2_Excel_Autogenerator < matlab.apps.AppBase
         Fx2Button matlab.ui.control.Button
         Fx3Button matlab.ui.control.Button
         Fx4Button matlab.ui.control.Button
+        PlanStatusLabel matlab.ui.control.Label
         FileStatusLabel matlab.ui.control.Label
 
         PriorRTHeader matlab.ui.control.Label
@@ -90,11 +91,17 @@ classdef EMBRACE2_EQD2_Excel_Autogenerator < matlab.apps.AppBase
 
         LoadedFiles = strings(1,4)
         ExplicitlyLoaded = false(1,4)
+        PlanNames = strings(1,4)
+
+        PatientName = ""
+        PatientID = ""
     end
 
     methods (Access = private)
 
         function startupFcn(app)
+            app.updatePatientLabel();
+            app.updatePlanStatus();
             app.refreshFileStatus();
             app.recalculateAll();
             app.StatusLabel.Text = ...
@@ -111,65 +118,71 @@ classdef EMBRACE2_EQD2_Excel_Autogenerator < matlab.apps.AppBase
             % 4 physical source key for EQD2 rows
             % 5 Excel row
             % 6 alpha/beta
-            % 7 EBRT EQD2 baseline
+            % 7 legacy template EBRT EQD2 baseline
             % 8 goal/soft constraint text
             % 9 tolerance/hard constraint text
             %
-            % Structure section rows store ROI volume internally in their
-            % key so the title can be updated to e.g.:
-            %   GTVres [40.00 cc]
+            % ROI volumes are shown as their own physical rows so each
+            % brachytherapy fraction can have an independent contour volume.
 
             app.TargetDefs = {
-                '',                'spacer',   '',                    '',                NaN, NaN, NaN, '',      ''
-                'GTV_res',          'section',  'gtvres_volume',      '',                 38, NaN, NaN, '',      ''
-                'D98 [Gy]',        'physical', 'gtvres_D98',         '',                 39, NaN, NaN, '',      ''
-                'D98 EQD210 [Gy]', 'eqd',      'gtvres_D98_EQD210',  'gtvres_D98',      NaN, 10, 44.25, '>95',   '>90'
+                '',                  'spacer',   '',                    '',               NaN, NaN, NaN, '',      ''
+                'GTV_res',           'section',  '',                    '',               NaN, NaN, NaN, '',      ''
+                'Volume [cc]',       'physical', 'gtvres_volume',       '',                38, NaN, NaN, '',      ''
+                'D98 [Gy]',          'physical', 'gtvres_D98',          '',                39, NaN, NaN, '',      ''
+                'D98 EQD210 [Gy]',   'eqd',      'gtvres_D98_EQD210',   'gtvres_D98',     NaN, 10, 44.25, '>95',   '>90'
 
-                '',                'spacer',   '',                    '',                NaN, NaN, NaN, '',      ''
-                'CTV_HR',           'section',   'ctvhr_volume',       '',                 42, NaN, NaN, '',      ''
-                'D98 [Gy]',        'physical', 'ctvhr_D98',          '',                 43, NaN, NaN, '',      ''
-                'D98 EQD210 [Gy]', 'eqd',      'ctvhr_D98_EQD210',   'ctvhr_D98',       NaN, 10, 44.25, '>75',   '>75'
-                'D90 [Gy]',        'physical', 'ctvhr_D90',          '',                 45, NaN, NaN, '',      ''
-                'D90 EQD210 [Gy]', 'eqd',      'ctvhr_D90_EQD210',   'ctvhr_D90',       NaN, 10, 44.25, '90-95', '>85'
-                'D50 [Gy]',        'physical', 'ctvhr_D50',          '',                 47, NaN, NaN, '',      ''
-                'D50 EQD210 [Gy]', 'eqd',      'ctvhr_D50_EQD210',   'ctvhr_D50',       NaN, 10, 44.25, '',      ''
+                '',                  'spacer',   '',                    '',               NaN, NaN, NaN, '',      ''
+                'CTV_HR',            'section',  '',                    '',               NaN, NaN, NaN, '',      ''
+                'Volume [cc]',       'physical', 'ctvhr_volume',        '',                42, NaN, NaN, '',      ''
+                'D98 [Gy]',          'physical', 'ctvhr_D98',           '',                43, NaN, NaN, '',      ''
+                'D98 EQD210 [Gy]',   'eqd',      'ctvhr_D98_EQD210',    'ctvhr_D98',      NaN, 10, 44.25, '>75',   '>75'
+                'D90 [Gy]',          'physical', 'ctvhr_D90',           '',                45, NaN, NaN, '',      ''
+                'D90 EQD210 [Gy]',   'eqd',      'ctvhr_D90_EQD210',    'ctvhr_D90',      NaN, 10, 44.25, '90-95', '>85'
+                'D50 [Gy]',          'physical', 'ctvhr_D50',           '',                47, NaN, NaN, '',      ''
+                'D50 EQD210 [Gy]',   'eqd',      'ctvhr_D50_EQD210',    'ctvhr_D50',      NaN, 10, 44.25, '',      ''
 
-                '',                'spacer',   '',                    '',                NaN, NaN, NaN, '',      ''
-                'CTV_IR',           'section',   'ctvir_volume',       '',                 50, NaN, NaN, '',      ''
-                'D98 [Gy]',        'physical', 'ctvir_D98',          '',                 51, NaN, NaN, '',      ''
-                'D98 EQD210 [Gy]', 'eqd',      'ctvir_D98_EQD210',   'ctvir_D98',       NaN, 10, 44.25, '>60',   '>60'
-                'D90 [Gy]',        'physical', 'ctvir_D90',          '',                 53, NaN, NaN, '',      ''
-                'D90 EQD210 [Gy]', 'eqd',      'ctvir_D90_EQD210',   'ctvir_D90',       NaN, 10, 44.25, '',      ''
+                '',                  'spacer',   '',                    '',               NaN, NaN, NaN, '',      ''
+                'CTV_IR',            'section',  '',                    '',               NaN, NaN, NaN, '',      ''
+                'Volume [cc]',       'physical', 'ctvir_volume',        '',                50, NaN, NaN, '',      ''
+                'D98 [Gy]',          'physical', 'ctvir_D98',           '',                51, NaN, NaN, '',      ''
+                'D98 EQD210 [Gy]',   'eqd',      'ctvir_D98_EQD210',    'ctvir_D98',      NaN, 10, 44.25, '>60',   '>60'
+                'D90 [Gy]',          'physical', 'ctvir_D90',           '',                53, NaN, NaN, '',      ''
+                'D90 EQD210 [Gy]',   'eqd',      'ctvir_D90_EQD210',    'ctvir_D90',      NaN, 10, 44.25, '',      ''
                 };
 
             app.OARDefs = {
-                '',                         'spacer',   '',                   '',                NaN, NaN, NaN, '',    ''
-                'BLADDER',                  'section',  'bladder_volume',     '',                NaN, NaN, NaN, '',    ''
-                'D0.1cc [Gy]',              'physical', 'bladder_D0p1',       '',                 59, NaN, NaN, '',    ''
-                'D0.1cc EQD23 [Gy]',        'eqd',      'bladder_D0p1_EQD23','bladder_D0p1',    NaN, 3, 43.20, '',    ''
-                'D2cc [Gy]',                'physical', 'bladder_D2',         '',                 61, NaN, NaN, '',    ''
-                'D2cc EQD23 [Gy]',          'eqd',      'bladder_D2_EQD23',  'bladder_D2',      NaN, 3, 43.20, '<80', '<90'
+                '',                         'spacer',   '',                    '',               NaN, NaN, NaN, '',    ''
+                'BLADDER',                  'section',  '',                    '',               NaN, NaN, NaN, '',    ''
+                'Volume [cc]',              'physical', 'bladder_volume',      '',                56, NaN, NaN, '',    ''
+                'D0.1cc [Gy]',              'physical', 'bladder_D0p1',        '',                59, NaN, NaN, '',    ''
+                'D0.1cc EQD23 [Gy]',        'eqd',      'bladder_D0p1_EQD23',  'bladder_D0p1',   NaN, 3, 43.20, '',    ''
+                'D2cc [Gy]',                'physical', 'bladder_D2',          '',                61, NaN, NaN, '',    ''
+                'D2cc EQD23 [Gy]',          'eqd',      'bladder_D2_EQD23',    'bladder_D2',     NaN, 3, 43.20, '<80', '<90'
 
-                '',                         'spacer',   '',                   '',                NaN, NaN, NaN, '',    ''
-                'RECTUM',                   'section',   'rectum_volume',      '',                NaN, NaN, NaN, '',    ''
-                'D0.1cc [Gy]',              'physical', 'rectum_D0p1',        '',                 67, NaN, NaN, '',    ''
-                'D0.1cc EQD23 [Gy]',        'eqd',      'rectum_D0p1_EQD23', 'rectum_D0p1',     NaN, 3, 43.20, '',    ''
-                'D2cc [Gy]',                'physical', 'rectum_D2',          '',                 69, NaN, NaN, '',    ''
-                'D2cc EQD23 [Gy]',          'eqd',      'rectum_D2_EQD23',   'rectum_D2',       NaN, 3, 43.20, '<65', '<75'
+                '',                         'spacer',   '',                    '',               NaN, NaN, NaN, '',    ''
+                'RECTUM',                   'section',  '',                    '',               NaN, NaN, NaN, '',    ''
+                'Volume [cc]',              'physical', 'rectum_volume',       '',                64, NaN, NaN, '',    ''
+                'D0.1cc [Gy]',              'physical', 'rectum_D0p1',         '',                67, NaN, NaN, '',    ''
+                'D0.1cc EQD23 [Gy]',        'eqd',      'rectum_D0p1_EQD23',   'rectum_D0p1',    NaN, 3, 43.20, '',    ''
+                'D2cc [Gy]',                'physical', 'rectum_D2',           '',                69, NaN, NaN, '',    ''
+                'D2cc EQD23 [Gy]',          'eqd',      'rectum_D2_EQD23',     'rectum_D2',      NaN, 3, 43.20, '<65', '<75'
 
-                '',                         'spacer',   '',                   '',                NaN, NaN, NaN, '',    ''
-                'SIGMOID',                  'section',   'sigmoid_volume',     '',                NaN, NaN, NaN, '',    ''
-                'D0.1cc [Gy]',              'physical', 'sigmoid_D0p1',       '',                 73, NaN, NaN, '',    ''
-                'D0.1cc EQD23 [Gy]',        'eqd',      'sigmoid_D0p1_EQD23','sigmoid_D0p1',    NaN, 3, 43.20, '',    ''
-                'D2cc [Gy]',                'physical', 'sigmoid_D2',         '',                 75, NaN, NaN, '',    ''
-                'D2cc EQD23 [Gy]',          'eqd',      'sigmoid_D2_EQD23',  'sigmoid_D2',      NaN, 3, 43.20, '<70', '<75'
+                '',                         'spacer',   '',                    '',               NaN, NaN, NaN, '',    ''
+                'SIGMOID',                  'section',  '',                    '',               NaN, NaN, NaN, '',    ''
+                'Volume [cc]',              'physical', 'sigmoid_volume',      '',                72, NaN, NaN, '',    ''
+                'D0.1cc [Gy]',              'physical', 'sigmoid_D0p1',        '',                73, NaN, NaN, '',    ''
+                'D0.1cc EQD23 [Gy]',        'eqd',      'sigmoid_D0p1_EQD23',  'sigmoid_D0p1',   NaN, 3, 43.20, '',    ''
+                'D2cc [Gy]',                'physical', 'sigmoid_D2',          '',                75, NaN, NaN, '',    ''
+                'D2cc EQD23 [Gy]',          'eqd',      'sigmoid_D2_EQD23',    'sigmoid_D2',     NaN, 3, 43.20, '<70', '<75'
 
-                '',                         'spacer',   '',                   '',                NaN, NaN, NaN, '',    ''
-                'INTESTINES OR BOWEL',      'section',   'bowel_volume',       '',                NaN, NaN, NaN, '',    ''
-                'D0.1cc [Gy]',              'physical', 'bowel_D0p1',         '',                 79, NaN, NaN, '',    ''
-                'D0.1cc EQD23 [Gy]',        'eqd',      'bowel_D0p1_EQD23',  'bowel_D0p1',      NaN, 3, 43.20, '',    ''
-                'D2cc [Gy]',                'physical', 'bowel_D2',           '',                 81, NaN, NaN, '',    ''
-                'D2cc EQD23 [Gy]',          'eqd',      'bowel_D2_EQD23',    'bowel_D2',        NaN, 3, 43.20, '<70', '<75'
+                '',                         'spacer',   '',                    '',               NaN, NaN, NaN, '',    ''
+                'INTESTINES OR BOWEL',      'section',  '',                    '',               NaN, NaN, NaN, '',    ''
+                'Volume [cc]',              'physical', 'bowel_volume',        '',                78, NaN, NaN, '',    ''
+                'D0.1cc [Gy]',              'physical', 'bowel_D0p1',          '',                79, NaN, NaN, '',    ''
+                'D0.1cc EQD23 [Gy]',        'eqd',      'bowel_D0p1_EQD23',    'bowel_D0p1',     NaN, 3, 43.20, '',    ''
+                'D2cc [Gy]',                'physical', 'bowel_D2',            '',                81, NaN, NaN, '',    ''
+                'D2cc EQD23 [Gy]',          'eqd',      'bowel_D2_EQD23',      'bowel_D2',       NaN, 3, 43.20, '<70', '<75'
                 };
         end
 
@@ -198,6 +211,63 @@ classdef EMBRACE2_EQD2_Excel_Autogenerator < matlab.apps.AppBase
         end
 
 
+        function updatePlanStatus(app)
+            parts = strings(1,4);
+
+            for fx = 1:4
+                plan = app.PlanNames(fx);
+
+                if strlength(plan)==0
+                    plan = "—";
+                end
+
+                parts(fx) = sprintf('F%d Plan: %s',fx,char(plan));
+            end
+
+            app.PlanStatusLabel.Text = strjoin(parts,'    |    ');
+        end
+
+
+        function updatePatientLabel(app)
+            patient = app.PatientName;
+            patientID = app.PatientID;
+
+            if strlength(patient)==0
+                patient = "—";
+            end
+            if strlength(patientID)==0
+                patientID = "—";
+            end
+
+            app.LoadLabel.Text = sprintf('Patient: %s    |    Patient ID: %s', ...
+                char(patient),char(patientID));
+        end
+
+
+        function acceptPatientMetadata(app,parsed)
+            newPatient = strtrim(string(parsed.Patient));
+            newID = strtrim(string(parsed.PatientID));
+
+            if strlength(app.PatientName)==0 && strlength(newPatient)>0
+                app.PatientName = newPatient;
+            elseif strlength(newPatient)>0 && strlength(app.PatientName)>0 && ...
+                    ~strcmpi(app.PatientName,newPatient)
+                error(sprintf(['Patient mismatch.\n\nLoaded patient: %s\n' ...
+                    'Current dashboard patient: %s'],newPatient,app.PatientName));
+            end
+
+            if strlength(app.PatientID)==0 && strlength(newID)>0
+                app.PatientID = newID;
+            elseif strlength(newID)>0 && strlength(app.PatientID)>0 && ...
+                    ~strcmpi(app.PatientID,newID)
+                error(sprintf(['Patient ID mismatch.\n\nLoaded Patient ID: %s\n' ...
+                    'Current dashboard Patient ID: %s'],newID,app.PatientID));
+            end
+
+            app.updatePatientLabel();
+        end
+
+
         function loadFraction(app,fx)
 
             [file,folder] = uigetfile( ...
@@ -215,12 +285,15 @@ classdef EMBRACE2_EQD2_Excel_Autogenerator < matlab.apps.AppBase
                 drawnow;
 
                 parsed = app.parseDVH(path);
+                app.acceptPatientMetadata(parsed);
                 metrics = app.calculateAllMetrics(parsed);
 
                 % This fraction was explicitly selected by the user.
                 % It is now protected from carry-forward from any earlier Fx.
                 app.ExplicitlyLoaded(fx) = true;
                 app.LoadedFiles(fx) = string(file);
+                app.PlanNames(fx) = strtrim(string(parsed.Plan));
+                app.updatePlanStatus();
 
                 % Always populate the selected fraction itself.
                 app.applyMetrics(app.TargetTable,app.TargetDefs,fx,metrics,false);
@@ -304,7 +377,7 @@ classdef EMBRACE2_EQD2_Excel_Autogenerator < matlab.apps.AppBase
                 rowType = string(defs{r,2});
                 key = string(defs{r,3});
 
-                if strlength(key)==0 || ~any(names == key)
+                if rowType ~= "physical" || strlength(key)==0 || ~any(names == key)
                     continue
                 end
 
@@ -314,15 +387,7 @@ classdef EMBRACE2_EQD2_Excel_Autogenerator < matlab.apps.AppBase
                     continue
                 end
 
-                if rowType == "section"
-                    % There is one displayed ROI title for all fractions, so
-                    % show the volume from the most recently selected DVH.
-                    baseName = string(defs{r,1});
-                    data{r,1} = sprintf('%s [%.2f cc]',baseName,value);
-
-                elseif rowType == "physical"
-                    data{r,destinationFx+1} = app.fmt(value);
-                end
+                data{r,destinationFx+1} = app.fmt(value);
             end
 
             tableHandle.Data = data;
@@ -576,7 +641,7 @@ classdef EMBRACE2_EQD2_Excel_Autogenerator < matlab.apps.AppBase
         function data = makePriorRTTable(app)
             data = {
                 'Dose per fraction [Gy]',           app.fmt(1.8), '', ''
-                'Fractions', app.fmt(25),  '', ''
+                'Fractions without central shield', app.fmt(25),  '', ''
                 'Total dose [Gy]',                  '',           '', ''
                 };
         end
@@ -1010,7 +1075,12 @@ classdef EMBRACE2_EQD2_Excel_Autogenerator < matlab.apps.AppBase
             app.OARTable.Data = app.makeInitialTable(app.OARDefs);
             app.LoadedFiles(:) = "";
             app.ExplicitlyLoaded(:) = false;
+            app.PlanNames(:) = "";
+            app.PatientName = "";
+            app.PatientID = "";
 
+            app.updatePatientLabel();
+            app.updatePlanStatus();
             app.refreshFileStatus();
             app.recalculateAll();
 
@@ -1107,8 +1177,8 @@ classdef EMBRACE2_EQD2_Excel_Autogenerator < matlab.apps.AppBase
                 excelRow = defs{r,5};
                 key = string(defs{r,3});
 
-                % Volume section rows are no longer shown per-fraction in
-                % the GUI. They are therefore not exported from the display.
+                % Physical rows include both dose metrics and per-fraction
+                % ROI volumes, all of which map back to the template.
                 if rowType ~= "physical" || isnan(excelRow) || strlength(key)==0
                     continue
                 end
@@ -1269,7 +1339,7 @@ classdef EMBRACE2_EQD2_Excel_Autogenerator < matlab.apps.AppBase
 
             app.MainGrid = uigridlayout(app.UIFigure,[9 1]);
             app.MainGrid.BackgroundColor = app.Black;
-            app.MainGrid.RowHeight = {52,78,26,105,26,250,26,'1x',60};
+            app.MainGrid.RowHeight = {52,102,26,105,26,290,26,'1x',60};
             app.MainGrid.RowSpacing = 6;
             app.MainGrid.Padding = [12 8 12 8];
 
@@ -1291,7 +1361,7 @@ classdef EMBRACE2_EQD2_Excel_Autogenerator < matlab.apps.AppBase
             app.TitleLabel.FontColor = app.White;
 
             app.BrandLabel = uilabel(app.HeaderGrid);
-            app.BrandLabel.Text = 'UF PROTON INSTITUTE';
+            app.BrandLabel.Text = 'UFHPTI';
             app.BrandLabel.FontSize = 11;
             app.BrandLabel.FontWeight = 'bold';
             app.BrandLabel.FontColor = app.UFOrange;
@@ -1303,15 +1373,15 @@ classdef EMBRACE2_EQD2_Excel_Autogenerator < matlab.apps.AppBase
             app.LoadPanel.BackgroundColor = app.NearBlack;
             app.LoadPanel.BorderColor = [0.18 0.18 0.20];
 
-            app.LoadGrid = uigridlayout(app.LoadPanel,[2 6]);
+            app.LoadGrid = uigridlayout(app.LoadPanel,[3 6]);
             app.LoadGrid.BackgroundColor = app.NearBlack;
-            app.LoadGrid.RowHeight = {34,22};
-            app.LoadGrid.ColumnWidth = {'1x',115,115,115,115,'1x'};
+            app.LoadGrid.RowHeight = {34,22,22};
+            app.LoadGrid.ColumnWidth = {300,115,115,115,115,'1x'};
             app.LoadGrid.ColumnSpacing = 8;
             app.LoadGrid.Padding = [10 6 10 5];
 
             app.LoadLabel = uilabel(app.LoadGrid);
-            app.LoadLabel.Text = 'BRACHYTHERAPY FRACTIONS';
+            app.LoadLabel.Text = 'Patient: —    |    Patient ID: —';
             app.LoadLabel.FontWeight = 'bold';
             app.LoadLabel.FontColor = app.White;
             app.LoadLabel.Layout.Row = 1;
@@ -1353,10 +1423,18 @@ classdef EMBRACE2_EQD2_Excel_Autogenerator < matlab.apps.AppBase
             app.Fx4Button.Layout.Row = 1;
             app.Fx4Button.Layout.Column = 5;
 
+            app.PlanStatusLabel = uilabel(app.LoadGrid);
+            app.PlanStatusLabel.Text = 'F1 Plan: —    |    F2 Plan: —    |    F3 Plan: —    |    F4 Plan: —';
+            app.PlanStatusLabel.FontSize = 9;
+            app.PlanStatusLabel.FontWeight = 'bold';
+            app.PlanStatusLabel.FontColor = app.White;
+            app.PlanStatusLabel.Layout.Row = 2;
+            app.PlanStatusLabel.Layout.Column = [1 6];
+
             app.FileStatusLabel = uilabel(app.LoadGrid);
             app.FileStatusLabel.FontSize = 9;
             app.FileStatusLabel.FontColor = app.Muted;
-            app.FileStatusLabel.Layout.Row = 2;
+            app.FileStatusLabel.Layout.Row = 3;
             app.FileStatusLabel.Layout.Column = [1 6];
 
             %% Prior RT / EBRT fractionation
@@ -1373,8 +1451,8 @@ classdef EMBRACE2_EQD2_Excel_Autogenerator < matlab.apps.AppBase
             app.PriorRTTable.ColumnName = { ...
                 'Parameter', ...
                 'Value', ...
-                'Tumour EQD210 [Gy]', ...
-                'OAR EQD23 [Gy]'};
+                'EQD2 [Gy] (alpha/beta = 10)', ...
+                'EQD2 [Gy] (alpha/beta = 3)'};
             app.PriorRTTable.ColumnWidth = {300,130,190,190};
             app.PriorRTTable.ColumnEditable = [false true false false];
             app.PriorRTTable.RowName = {};
