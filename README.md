@@ -43,3 +43,16 @@ Run `python3 -m unittest discover -s Python/tests -v`. Synthetic tests cover uni
 A live Tkinter smoke test verified window construction, the displayed EQD2 result and fraction controls. The port was checked against the MATLAB source; MATLAB execution and native Excel recalculation have not been performed. Clinical commissioning against approved cases remains separate from these software tests.
 
 The earlier `Python/DVH_to_EQD2.py` single-fraction utility is retained but is not used by this dashboard.
+
+## Standalone applications
+
+Packaged builds include Python, Tkinter, and the Excel template. End users do not need to install Python.
+
+- **Apple Silicon Mac:** unzip `EMBRACE-EQD2-macOS-arm64.zip`, then open `EMBRACE EQD2.app`. You may drag it to Applications.
+- **64-bit Windows:** unzip `EMBRACE-EQD2-Windows-x64.zip`, then double-click `EMBRACE EQD2.exe`.
+
+The Mac build targets Apple Silicon (M-series), not Intel Macs. These builds have no publisher certificate or Apple notarization; another computer may display an operating-system security prompt. Organization-managed computers may require IT approval.
+
+GitHub Actions builds both platforms and retains downloadable ZIP artifacts for 30 days. Find the latest successful **Build desktop applications** run under the repository's **Actions** tab. Patient files are not included or sent to the build service.
+
+To rebuild locally, create a virtual environment on the target operating system, install `packaging/requirements.txt`, and run `python packaging/build.py`. The script builds the app, launches the packaged executable for GUI/calculation/template-export checks, then creates the ZIP in `dist`. Windows executables must be built on Windows. The build smoke-test report is stored in `build/packaged-smoke-test.json`.
