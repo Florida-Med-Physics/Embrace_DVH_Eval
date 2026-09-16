@@ -1,0 +1,45 @@
+# EMBRACE-2 EQD2 Dashboard
+
+A Python desktop port of `EMBRACE2_EQD2_Excel_Autogenerator (19).m` supplied September 16, 2026. The Python interface follows the MATLAB dashboard: patient and plan details, prior RT, targets, organs at risk, editable physical doses and volumes, calculated EQD2 rows, colored totals, and Excel export.
+
+## Launch
+
+- **macOS:** double-click `Python/Launch_EMBRACE.command`. On the development Mac this selects the compatible Python runtime bundled with Codex; elsewhere it uses `python3`.
+- **Windows:** double-click `Python/Launch_EMBRACE.bat`.
+- **Terminal:** `python3 Python/EMBRACE2_EQD2_Excel_Autogenerator.py`.
+
+Requires Python 3.9+ with working Tkinter. No pip packages, MATLAB, or Excel installation are required to run the dashboard. Excel is needed to recalculate the exported template formulas. The macOS system Python/Tk on the development machine crashes during window creation; the launcher avoids that installation when the bundled runtime is available.
+
+## Workflow
+
+1. Select 3, 4, or 5 brachytherapy fractions (default: 4).
+2. Load each fraction's cumulative absolute DVH TXT using its Load button. The button determines the fraction; ROI suffixes do not select it.
+3. Each import fills that fraction and later fractions not explicitly loaded. Explicit later imports are protected. Manual edits affect only the edited cell and do not protect the fraction from subsequent carry-forward.
+4. Edit blue physical-dose/volume cells and prior RT values. Press Enter or leave the cell to calculate. Prior RT defaults to 1.8 Gy × 25 fractions.
+5. Export the current course. The app finds `EQD2_with_tolerances_090126.xlsx` beside the script or in `Matlab`, or prompts for a template. It updates every sheet whose name contains `FX1-4`.
+
+Green totals meet the planning goal / soft constraint. Yellow totals miss that goal but meet the tolerance / hard constraint. Red totals fail the tolerance. Blank constraints have no color. Comparisons retain MATLAB's strict `<` and `>` operators and inclusive `90–95` range.
+
+## Calculation parity
+
+- Dose contribution: `d × (1 + d/(α/β)) / (1 + 2/(α/β))`.
+- α/β = 10 Gy for targets, 3 Gy for OARs. Prior RT contribution uses its dose per fraction and fraction count.
+- Target metrics: GTV_res D98; CTV_HR D98/D90/D50; CTV_IR D98/D90. OAR metrics: bladder, rectum, sigmoid and bowel D0.1cc/D2cc. Each structure has a per-fraction volume.
+- Structure aliases, dose-sorted linear interpolation, nearest-volume fallback and maximum cumulative volume follow the supplied MATLAB code.
+- Imported and edited physical values are stored to two decimal places before EQD2 calculation, matching MATLAB's table behavior. Totals sum unrounded EQD2 contributions, then display two decimals. Constraint colors evaluate the displayed total.
+- Shortening the course clears inactive fractions. Expanding it copies the most recent explicitly loaded fraction into new columns. Clear All preserves the selected course length and resets prior RT.
+- As in MATLAB, metrics absent from a subsequent DVH import retain existing values; clear the dashboard when beginning a new case. Duplicate recognized ROIs use the last matching ROI in file order.
+
+## Deliberate safeguards in the Python port
+
+Patient name and ID are checked together before changing course state. Nonfinite numeric input and explicitly relative volume exports are rejected. The source template cannot be overwritten. Export clears missing/inactive physical inputs, including the template's sixth-fraction column, so its sample values and physical carry formulas cannot contribute. Calculated formulas, formatting and other archive contents remain intact. Stale formula caches in updated sheets are removed and full Excel recalculation is requested on open. The exporter expects the supplied template's existing cell layout.
+
+The template contains additional sections beyond the dashboard; those remain unchanged. Export is a populated template, not a screenshot of the dashboard. Blank metrics can display differently after Excel recalculates the template's existing formulas.
+
+## Verification
+
+Run `python3 -m unittest discover -s Python/tests -v`. Synthetic tests cover unit conversion, metrics, interpolation boundaries, invalid input, carry protection, course resizing, atomic patient mismatch handling, prior RT/EQD2, rounding, constraint boundaries and export preservation. No patient DVH data is included.
+
+A live Tkinter smoke test verified window construction, the displayed EQD2 result and fraction controls. The port was checked against the MATLAB source; MATLAB execution and native Excel recalculation have not been performed. Clinical commissioning against approved cases remains separate from these software tests.
+
+The earlier `Python/DVH_to_EQD2.py` single-fraction utility is retained but is not used by this dashboard.
