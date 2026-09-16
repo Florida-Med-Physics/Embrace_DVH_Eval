@@ -231,5 +231,34 @@ class App(tk.Tk):
             messagebox.showerror('Excel Export Error', str(error), parent=self)
 
 
+def packaged_smoke_test(report_path):
+    """Exercise the frozen GUI and resource lookup without any patient data."""
+    import json
+    import tempfile
+    app = App()
+    try:
+        app.update()
+        app.inputs['ctvhr_D90', 0][0].set('7')
+        app.count.set('5 Fx')
+        app.change_count()
+        assert app.totals['ctvhr_D90'].cget('text') == '54.17'
+        assert str(app.buttons[4].cget('state')) == 'normal'
+        app.count.set('3 Fx')
+        app.change_count()
+        assert str(app.buttons[4].cget('state')) == 'disabled'
+        template = Path(__file__).resolve().parent/'EQD2_with_tolerances_090126.xlsx'
+        assert template.is_file(), 'Bundled template is missing'
+        with tempfile.TemporaryDirectory() as folder:
+            sheets = export_workbook(app.course, template, Path(folder)/'smoke.xlsx')
+            assert len(sheets) == 2
+        Path(report_path).write_text(json.dumps({'status': 'passed', 'checks': ['GUI', 'EQD2 total', 'fraction controls', 'bundled template export']}))
+    finally:
+        app.destroy()
+
+
 if __name__ == '__main__':
-    App().mainloop()
+    import sys
+    if len(sys.argv) == 3 and sys.argv[1] == '--smoke-test':
+        packaged_smoke_test(sys.argv[2])
+    else:
+        App().mainloop()

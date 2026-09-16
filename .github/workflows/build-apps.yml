@@ -1,0 +1,41 @@
+name: Build desktop applications
+on:
+  push:
+    paths:
+      - 'Python/**'
+      - 'Matlab/EQD2_with_tolerances_090126.xlsx'
+      - 'packaging/**'
+      - '.github/workflows/build-apps.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build:
+    name: ${{ matrix.label }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            label: Windows-x64
+          - os: macos-14
+            label: macOS-arm64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install build tools
+        run: python -m pip install -r packaging/requirements.txt
+      - name: Test calculations and exports
+        run: python -m unittest discover -s Python/tests -v
+      - name: Build and smoke-test packaged application
+        run: python packaging/build.py
+      - name: Upload standalone application
+        uses: actions/upload-artifact@v4
+        with:
+          name: EMBRACE-EQD2-${{ matrix.label }}
+          path: dist/EMBRACE-EQD2-*.zip
+          if-no-files-found: error
+          retention-days: 30
