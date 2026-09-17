@@ -1,264 +1,379 @@
 #!/usr/bin/env python3
-"""Run with Python 3.9+ and Tkinter. No pip dependencies required."""
+"""EMBRACE-2 desktop dashboard. Install Python/requirements.txt for PDF export."""
+from copy import deepcopy
 from pathlib import Path
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 from embrace_core import Course, STRUCTURES, eqd2, fmt, status
 from embrace_export import export_workbook
+from embrace_pdf import export_pdf
+from embrace_comparison import ComparisonTab
 
-BLUE = '#c7edf2'
-COLORS = {'neutral': 'white', 'pass': '#73bf6e', 'warn': '#f5cc52', 'fail': '#e0574d'}
+BLUE = '#d9eff7'
+BG = '#f4f5f7'
+INK = '#17212b'
+HEADER = '#e6e9ed'
+COLORS = {'neutral': 'white', 'pass': '#cde7d2', 'warn': '#ffedb5', 'fail': '#f3c5c1'}
+
+
+class MetricTable(tk.Frame):
+    """An independently scrolling table with a stationary aligned column header."""
+    def __init__(self, parent, app, title, definitions, target):
+        super().__init__(parent,bg=BG)
+        self.app = app
+        tk.Label(self,text=title,bg=BG,fg=INK,font=('Arial',12,'bold'),anchor='w').pack(fill='x',pady=(3,3))
+        self.header = tk.Frame(self,bg=HEADER)
+        self.header.pack(fill='x')
+        outer = tk.Frame(self,bg='white')
+        outer.pack(fill='both',expand=True)
+        self.canvas = tk.Canvas(outer,bg='white',highlightthickness=0,yscrollincrement=22)
+        self.scroll = ttk.Scrollbar(outer,orient='vertical',command=self.canvas.yview)
+        self.canvas.configure(yscrollcommand=self.scroll.set)
+        self.scroll.pack(side='right',fill='y')
+        self.canvas.pack(side='left',fill='both',expand=True)
+        self.header.configure(padx=0)
+        self.head_grid = tk.Frame(self.header,bg=HEADER)
+        self.head_grid.pack(side='left',fill='x',expand=True)
+        self.gutter = tk.Frame(self.header,bg=HEADER,width=self.scroll.winfo_reqwidth())
+        self.gutter.pack(side='right',fill='y')
+        self.grid_frame = tk.Frame(self.canvas,bg='#e1e5e9')
+        self.window = self.canvas.create_window((0,0),window=self.grid_frame,anchor='nw')
+        self.grid_frame.bind('<Configure>',lambda e:self.canvas.configure(scrollregion=self.canvas.bbox('all')))
+        self.canvas.bind('<Configure>',self.resize)
+        headings = ['Structure / dose parameter','Fx 1','Fx 2','Fx 3','Fx 4','Fx 5','BT + EBRT\nEQD2 [Gy]',
+                    'Planning\ngoal' if target else 'Soft\nconstraint','Tolerance' if target else 'Hard\nconstraint']
+        self.headings=[]
+        for col,text in enumerate(headings):
+            label=self.cell(self.head_grid,0,col,text,HEADER,bold=True)
+            label.configure(height=2)
+            self.headings.append(label)
+        row=0
+        for title,key,metrics in definitions:
+            section=tk.Label(self.grid_frame,text=title,bg=HEADER,fg=INK,anchor='w',font=('Arial',11,'bold'),padx=7,pady=1)
+            section.grid(row=row,column=0,columnspan=9,sticky='nsew')
+            row+=1
+            for metric in metrics:
+                k=f'{key}_{metric.key}'
+                self.cell(self.grid_frame,row,0,'  '+metric.label,'white')
+                for fx in range(5):
+                    if metric.key == 'volume':
+                        app.volumes[k,fx]=self.cell(self.grid_frame,row,fx+1,'','white')
+                    else:
+                        var=tk.StringVar()
+                        entry=tk.Entry(self.grid_frame,textvariable=var,bg=BLUE,fg=INK,
+                                       disabledbackground='#eef0f2',disabledforeground='#7b858f',
+                                       justify='center',relief='flat',width=1,font=('Arial',11),
+                                       highlightthickness=1,highlightbackground=BLUE,highlightcolor='#327ca5')
+                        entry.grid(row=row,column=fx+1,sticky='nsew',padx=1,pady=0)
+                        entry.bind('<Return>',app.edit_pending)
+                        entry.bind('<FocusOut>',app.edit_pending)
+                        app.inputs[k,fx]=var,entry
+                for col in (6,7,8):
+                    self.cell(self.grid_frame,row,col,'','white')
+                row+=1
+                if metric.ab:
+                    label=metric.label.replace('[Gy]',f'EQD2{metric.ab} [Gy]')
+                    self.cell(self.grid_frame,row,0,'  '+label,'#fafbfc')
+                    for fx in range(5):
+                        app.cells[k,fx]=self.cell(self.grid_frame,row,fx+1,'','#fafbfc')
+                    app.totals[k]=self.cell(self.grid_frame,row,6,'','white',bold=True)
+                    self.cell(self.grid_frame,row,7,metric.goal,'#fafbfc')
+                    self.cell(self.grid_frame,row,8,metric.hard,'#fafbfc')
+                    row+=1
+        self.bind_wheel(outer)
+
+    @staticmethod
+    def cell(parent,row,col,text,bg,bold=False):
+        label=tk.Label(parent,text=text,bg=bg,fg=INK,anchor='w' if col == 0 else 'center',
+                       font=('Arial',11,'bold' if bold else 'normal'),padx=5,pady=1,width=1)
+        label.grid(row=row,column=col,sticky='nsew',padx=0,pady=0)
+        return label
+
+    def resize(self,event):
+        # Identical pixel widths ensure header/body alignment at any window size.
+        self.canvas.itemconfigure(self.window,width=event.width)
+        proportions=[225,70,70,70,70,70,135,105,105]
+        widths=[int(event.width*w/sum(proportions)) for w in proportions]
+        widths[0]+=event.width-sum(widths)
+        for grid in (self.head_grid,self.grid_frame):
+            for col,width in enumerate(widths):
+                grid.columnconfigure(col,minsize=width,weight=0)
+
+    def bind_wheel(self,widget):
+        def wheel(event):
+            delta = -1 if event.num == 4 or event.delta > 0 else 1
+            self.canvas.yview_scroll(delta,'units')
+            return 'break'
+        widget.bind('<MouseWheel>',wheel)
+        widget.bind('<Button-4>',wheel)
+        widget.bind('<Button-5>',wheel)
+        for child in widget.winfo_children():
+            self.bind_wheel(child)
 
 
 class App(tk.Tk):
     def __init__(self):
         super().__init__()
-        self.course = Course()
-        self.title('EMBRACE-2 EQD2 Excel Autogenerator')
-        self.geometry('1200x980')
-        self.minsize(1000, 720)
-        self.configure(bg='#080809')
-        self.cells, self.totals, self.inputs = {}, {}, {}
-        self.status_text = tk.StringVar(value='Choose 3, 4, or 5 fractions, then load DVHs or edit physical values.')
-        heading = tk.Frame(self, bg='#080809')
-        heading.pack(fill='x', padx=12, pady=12)
-        tk.Label(heading, text='EMBRACE-2  EQD2 Excel Autogenerator', bg='#080809', fg='white', font=('Arial', 22, 'bold')).pack(side='left')
-        tk.Label(heading, text='UFHPTI', bg='#080809', fg='#fa4a00', font=('Arial', 12, 'bold')).pack(side='right')
-        controls = ttk.Frame(self, padding=10)
-        controls.pack(fill='x', padx=12)
-        self.patient = ttk.Label(controls)
-        self.patient.pack(side='left', fill='x', expand=True)
-        self.count = tk.StringVar(value='4 Fx')
-        count = ttk.Combobox(controls, textvariable=self.count, values=['3 Fx', '4 Fx', '5 Fx'], width=5, state='readonly')
-        count.pack(side='left', padx=5)
-        count.bind('<<ComboboxSelected>>', self.change_count)
-        self.buttons = []
+        self.course=Course()
+        self._committing=False
+        self.title('EMBRACE-2 EQD2')
+        self.geometry('1160x850')
+        self.minsize(1020,680)
+        self.configure(bg=BG)
+        self.notebook=ttk.Notebook(self)
+        self.notebook.pack(fill='both',expand=True)
+        self.dashboard=tk.Frame(self.notebook,bg=BG)
+        self.notebook.add(self.dashboard,text='Course dashboard')
+        self.cells,self.totals,self.inputs,self.volumes={},{},{},{}
+        self.displayed={}
+        self.status_text=tk.StringVar(value='Blue cells: enter physical dose. Volumes come from the DVH.')
+        top=tk.Frame(self.dashboard,bg=BG)
+        top.pack(fill='x',padx=12,pady=(8,3))
+        tk.Label(top,text='EMBRACE-2  |  EQD2',bg=BG,fg=INK,font=('Arial',19,'bold')).pack(side='left')
+        self.patient=tk.Label(top,bg=BG,fg=INK,font=('Arial',11),anchor='e')
+        self.patient.pack(side='right',fill='x',expand=True,padx=(20,0))
+        controls=tk.Frame(self.dashboard,bg=BG)
+        controls.pack(fill='x',padx=12,pady=3)
+        tk.Label(controls,text='Brachytherapy',bg=BG,fg=INK,font=('Arial',11,'bold')).pack(side='left',padx=(0,8))
+        self.count=tk.StringVar(value='4 Fx')
+        count=ttk.Combobox(controls,textvariable=self.count,values=['3 Fx','4 Fx','5 Fx'],width=5,state='readonly')
+        count.pack(side='left',padx=(0,8))
+        count.bind('<<ComboboxSelected>>',self.change_count)
+        self.buttons=[]
         for fx in range(5):
-            button = ttk.Button(controls, text=f'Load F{fx+1}', command=lambda i=fx: self.load(i))
-            button.pack(side='left', padx=3)
+            button=ttk.Button(controls,text=f'Load Fx {fx+1}',command=lambda i=fx:self.load(i),width=11)
+            button.pack(side='left',padx=2)
             self.buttons.append(button)
-        self.plans = self.label('', size=10)
-        self.files = self.label('', size=9)
-        self.label('PRIOR RT / EBRT FRACTIONATION', bold=True)
-        prior = tk.Frame(self, bg='white')
-        prior.pack(fill='x', padx=12)
-        for col, name in enumerate(('Parameter', 'Value', 'EQD2 [Gy] (α/β = 10)', 'EQD2 [Gy] (α/β = 3)')):
-            self.cell(prior, 0, col, name, '#b3e0e8', bold=True)
-            prior.columnconfigure(col, weight=1)
-        self.prior_vars = [tk.StringVar(), tk.StringVar()]
-        for row, text in enumerate(('Dose per fraction [Gy]', 'Fractions without central shield', 'Total dose [Gy]'), 1):
-            self.cell(prior, row, 0, text, 'white')
-            if row < 3:
-                entry = tk.Entry(prior, textvariable=self.prior_vars[row-1], bg=BLUE, fg='black', justify='center', relief='flat')
-                entry.grid(row=row, column=1, sticky='nsew', padx=1, pady=1)
-                entry.bind('<Return>', self.edit_prior)
-                entry.bind('<FocusOut>', self.edit_prior)
-        self.prior_display = {}
-        for row, col in ((2,2), (2,3), (3,1), (3,2), (3,3)):
-            self.prior_display[row,col] = self.cell(prior, row, col, '', 'white')
-        body = tk.PanedWindow(self, orient='vertical', bg='#080809', sashwidth=8)
-        body.pack(fill='both', expand=True, padx=12, pady=6)
-        for title, definitions, target in [('TARGETS', STRUCTURES[:3], True), ('ORGANS AT RISK', STRUCTURES[3:], False)]:
-            panel = tk.Frame(body, bg='#080809')
-            body.add(panel, minsize=160, stretch='always')
-            tk.Label(panel, text=title, bg='#080809', fg='white', font=('Arial', 14, 'bold'), anchor='w').pack(fill='x', pady=5)
-            outer = tk.Frame(panel)
-            outer.pack(fill='both', expand=True)
-            canvas = tk.Canvas(outer, bg='white', highlightthickness=0)
-            scroll = ttk.Scrollbar(outer, orient='vertical', command=canvas.yview)
-            canvas.configure(yscrollcommand=scroll.set)
-            scroll.pack(side='right', fill='y')
-            canvas.pack(side='left', fill='both', expand=True)
-            grid = tk.Frame(canvas, bg='#d3d8dc')
-            win = canvas.create_window((0,0), window=grid, anchor='nw')
-            grid.bind('<Configure>', lambda e,c=canvas: c.configure(scrollregion=c.bbox('all')))
-            canvas.bind('<Configure>', lambda e,c=canvas,w=win: c.itemconfigure(w, width=e.width))
-            headers = ['Structure / Dose Parameter', 'F1', 'F2', 'F3', 'F4', 'F5', 'TOTAL BT + EBT', 'Planning Goal' if target else 'Soft Constraints', 'Tolerance' if target else 'Hard Constraints']
-            for col, header in enumerate(headers):
-                self.cell(grid, 0, col, header, '#b3e0e8', bold=True)
-                grid.columnconfigure(col, weight=3 if col == 0 else 1, minsize=180 if col == 0 else 66)
-            row = 1
-            for title, key, metrics in definitions:
-                section = tk.Label(grid, text=title, bg='#b3e0e8', fg='black', anchor='w', font=('Arial', 11, 'bold'), padx=8)
-                section.grid(row=row, column=0, columnspan=9, sticky='nsew', pady=(8,1))
-                row += 1
-                for metric in metrics:
-                    full_key = f'{key}_{metric.key}'
-                    self.cell(grid, row, 0, '    '+metric.label, BLUE)
-                    for fx in range(5):
-                        var = tk.StringVar()
-                        entry = tk.Entry(grid, textvariable=var, bg=BLUE, fg='black', disabledbackground='#e0e0e0', disabledforeground='#737373', justify='center', relief='flat', width=7)
-                        entry.grid(row=row, column=fx+1, sticky='nsew', padx=1, pady=1)
-                        entry.bind('<Return>', lambda e,i=fx,k=full_key: self.edit(i,k))
-                        entry.bind('<FocusOut>', lambda e,i=fx,k=full_key: self.edit(i,k))
-                        self.inputs[full_key,fx] = var,entry
-                    row += 1
-                    if metric.ab:
-                        self.cell(grid, row, 0, '    '+metric.label.replace('[Gy]', f'EQD2{metric.ab} [Gy]'), 'white')
-                        for fx in range(5):
-                            self.cells[full_key,fx] = self.cell(grid,row,fx+1,'','white')
-                        self.totals[full_key] = self.cell(grid,row,6,'','white',bold=True)
-                        self.cell(grid,row,7,metric.goal,'white')
-                        self.cell(grid,row,8,metric.hard,'white')
-                        row += 1
-            def wheel(event, c=canvas):
-                c.yview_scroll(-1 if event.delta > 0 or event.num == 4 else 1, 'units')
-                return 'break'
-            def bind_wheel(widget):
-                widget.bind('<MouseWheel>', wheel)
-                widget.bind('<Button-4>', wheel)
-                widget.bind('<Button-5>', wheel)
-                for child in widget.winfo_children():
-                    bind_wheel(child)
-            bind_wheel(outer)
-        footer = ttk.Frame(self, padding=10)
-        footer.pack(fill='x', padx=12, pady=(0,8))
-        ttk.Label(footer, textvariable=self.status_text, wraplength=700).pack(side='left', fill='x', expand=True)
-        ttk.Button(footer, text='Clear All', command=self.clear).pack(side='left', padx=8)
-        ttk.Button(footer, text='EXPORT CURRENT DISPLAY TO EXCEL', command=self.export).pack(side='right')
+        self.rx_frame=tk.Frame(self.dashboard,bg=BG)
+        self.rx_frame.pack(fill='x',padx=12,pady=2)
+        self.plans=self.label('',10)
+        details=tk.Frame(self.dashboard,bg=BG)
+        details.pack(fill='x',padx=12)
+        self.show_files=tk.BooleanVar(value=False)
+        ttk.Checkbutton(details,text='Show source files',variable=self.show_files,command=self.toggle_files).pack(side='left')
+        tk.Label(details,text='Blue = dose input   |   Green = goal   Yellow = tolerance   Red = outside tolerance',bg=BG,fg='#505b67',font=('Arial',10)).pack(side='right')
+        self.files=tk.Label(self.dashboard,text='',bg=BG,fg='#505b67',anchor='w',justify='left',wraplength=1100,font=('Arial',9))
+        self.prior_frame=tk.Frame(self.dashboard,bg=HEADER,padx=8,pady=5)
+        self.prior_frame.pack(fill='x',padx=12,pady=(5,3))
+        tk.Label(self.prior_frame,text='PRIOR RT / EBRT',bg=HEADER,fg=INK,font=('Arial',11,'bold')).pack(side='left',padx=(0,12))
+        self.prior_vars=[tk.StringVar(),tk.StringVar()]
+        for i,text in enumerate(('Gy / Fx','fractions')):
+            entry=tk.Entry(self.prior_frame,textvariable=self.prior_vars[i],bg=BLUE,fg=INK,justify='center',relief='flat',font=('Arial',11),width=6)
+            entry.pack(side='left',ipady=2)
+            entry.bind('<Return>',self.edit_pending)
+            entry.bind('<FocusOut>',self.edit_pending)
+            tk.Label(self.prior_frame,text=text,bg=HEADER,fg=INK,font=('Arial',10)).pack(side='left',padx=(4,10))
+        self.prior_summary=tk.Label(self.prior_frame,text='',bg=HEADER,fg=INK,font=('Arial',10),anchor='e')
+        self.prior_summary.pack(side='right',fill='x',expand=True)
+        body=tk.PanedWindow(self.dashboard,orient='vertical',bg=BG,sashwidth=6,bd=0)
+        body.pack(fill='both',expand=True,padx=12,pady=(0,3))
+        self.tables=[]
+        for title,definitions,target in [('TARGETS',STRUCTURES[:3],True),('ORGANS AT RISK',STRUCTURES[3:],False)]:
+            table=MetricTable(body,self,title,definitions,target)
+            body.add(table,minsize=150,stretch='always')
+            self.tables.append(table)
+        footer=tk.Frame(self.dashboard,bg=BG)
+        footer.pack(fill='x',padx=12,pady=(3,8))
+        ttk.Button(footer,text='Export Excel',command=self.export).pack(side='right',padx=(6,0))
+        ttk.Button(footer,text='Export PDF',command=self.export_report).pack(side='right',padx=(6,0))
+        ttk.Button(footer,text='Clear all',command=self.clear).pack(side='right',padx=(6,0))
+        tk.Label(footer,textvariable=self.status_text,bg=BG,fg='#505b67',font=('Arial',10),anchor='w',justify='left',wraplength=720).pack(side='left',fill='x',expand=True)
+        self.comparison=ComparisonTab(self.notebook,self)
+        self.notebook.add(self.comparison,text='Plan comparison')
+        self.notebook.bind('<<NotebookTabChanged>>',lambda e:self.commit_inputs())
         self.refresh()
+        self.after(100,lambda:body.sash_place(0,0,int(body.winfo_height()*.46)))
 
-    def label(self, text, size=12, bold=False):
-        label = tk.Label(self, text=text, bg='#080809', fg='white', anchor='w', justify='left', wraplength=1160, font=('Arial',size,'bold' if bold else 'normal'))
-        label.pack(fill='x', padx=12, pady=4)
+    def label(self,text,size=11):
+        label=tk.Label(self.dashboard,text=text,bg=BG,fg=INK,anchor='w',justify='left',wraplength=1100,font=('Arial',size))
+        label.pack(fill='x',padx=12,pady=2)
         return label
 
-    @staticmethod
-    def cell(parent, row, col, text, bg, bold=False):
-        label = tk.Label(parent, text=text, bg=bg, fg='black', anchor='w' if col == 0 else 'center', font=('Arial',10,'bold' if bold else 'normal'), padx=5, pady=3)
-        label.grid(row=row, column=col, sticky='nsew', padx=1, pady=1)
-        return label
+    def toggle_files(self):
+        if self.show_files.get():
+            self.files.pack(fill='x',padx=12,pady=2,before=self.prior_frame)
+        else:
+            self.files.pack_forget()
 
     def refresh(self):
-        c = self.course
-        self.patient.configure(text=f'Patient: {c.patient or "—"}   |   Patient ID: {c.patient_id or "—"}')
-        self.plans.configure(text='    |    '.join(f'Fx{i+1} Plan: {c.plans[i] or "—"}' for i in range(c.count)))
-        self.files.configure(text='    |    '.join(f'Fx{i+1}: {c.files[i] or "—"}' for i in range(c.count)))
+        c=self.course
+        self.patient.configure(text=f'Patient: {c.patient or "—"}   |   ID: {c.patient_id or "—"}')
+        self.plans.configure(text='    |    '.join(f'Fx {i+1}: {c.plans[i] or "—"}' for i in range(c.count)))
+        self.files.configure(text='\n'.join(f'Fx {i+1}: {c.files[i] or "No file loaded"}' for i in range(c.count)))
         self.prior_vars[0].set(fmt(c.dose_per_fx))
-        self.prior_vars[1].set(fmt(c.prior_fractions))
-        for (row,col), label in self.prior_display.items():
-            label.configure(text=fmt(c.dose_per_fx*c.prior_fractions if col == 1 else c.baseline(10 if col == 2 else 3)))
-        for fx, button in enumerate(self.buttons):
+        self.prior_vars[1].set(str(c.prior_fractions))
+        self.prior_displayed=[v.get() for v in self.prior_vars]
+        self.prior_summary.configure(text=f'Total {fmt(c.dose_per_fx*c.prior_fractions)} Gy   |   EQD2₁₀ {fmt(c.baseline(10))}   |   EQD2₃ {fmt(c.baseline(3))} Gy')
+        for fx,button in enumerate(self.buttons):
             button.configure(state='normal' if fx < c.count else 'disabled')
-        for (key,fx), (var,entry) in self.inputs.items():
+        for (key,fx),(var,entry) in self.inputs.items():
             var.set(fmt(c.values[fx].get(key)))
+            self.displayed[key,fx]=var.get()
             entry.configure(state='normal' if fx < c.count else 'disabled')
-        for _, key, metrics in STRUCTURES:
+        for (key,fx),label in self.volumes.items():
+            label.configure(text=fmt(c.values[fx].get(key)),bg='white' if fx < c.count else '#eef0f2',fg='#66717e')
+        for table in self.tables:
+            for fx in range(5):
+                table.headings[fx+1].configure(fg=INK if fx < c.count else '#929ba4')
+        for _,key,metrics in STRUCTURES:
             for metric in metrics:
                 if not metric.ab:
                     continue
-                k = f'{key}_{metric.key}'
+                k=f'{key}_{metric.key}'
                 for fx in range(5):
-                    value = c.values[fx].get(k)
-                    self.cells[k,fx].configure(text=fmt(eqd2(value,metric.ab)) if value is not None and fx < c.count else '', bg='white' if fx < c.count else '#e0e0e0')
-                total = c.total(k)
-                self.totals[k].configure(text=fmt(total), bg=COLORS[status(total,metric)])
+                    value=c.values[fx].get(k)
+                    self.cells[k,fx].configure(text=fmt(eqd2(value,metric.ab)) if value is not None and fx<c.count else '',bg='#fafbfc' if fx<c.count else '#eef0f2')
+                total=c.total(k)
+                self.totals[k].configure(text=fmt(total),bg=COLORS[status(total,metric)])
 
-    def edit(self, fx, key):
-        if fx >= self.course.count:
-            return
-        try:
-            self.course.edit(fx,key,self.inputs[key,fx][0].get())
-        except ValueError as error:
-            self.status_text.set(str(error))
-        self.refresh()
-
-    def edit_prior(self, event=None):
-        try:
-            self.course.set_prior(*(v.get() for v in self.prior_vars))
-        except ValueError as error:
-            self.status_text.set(str(error))
-        self.refresh()
+        if hasattr(self,'comparison'):
+            self.comparison.refresh()
 
     def commit_inputs(self):
-        """Commit pending text even when a toolbar click does not move focus."""
-        for (key, fx), (var, _) in self.inputs.items():
-            if fx < self.course.count:
-                try:
-                    self.course.edit(fx, key, var.get())
-                except ValueError as error:
-                    self.status_text.set(str(error))
+        """Apply changed text only; rounded display values never replace stored data."""
+        if self._committing:
+            return True
+        self._committing=True
         try:
-            self.course.set_prior(*(v.get() for v in self.prior_vars))
+            updated=deepcopy(self.course)
+            for (key,fx),(var,_) in self.inputs.items():
+                if fx<updated.count and var.get()!=self.displayed[key,fx]:
+                    updated.edit(fx,key,var.get())
+            prior=[v.get() for v in self.prior_vars]
+            if prior != self.prior_displayed:
+                dose=prior[0] if prior[0]!=self.prior_displayed[0] else updated.dose_per_fx
+                count=prior[1] if prior[1]!=self.prior_displayed[1] else updated.prior_fractions
+                updated.set_prior(dose,count)
+            self.course=updated
+            self.refresh()
+            return True
         except ValueError as error:
-            self.status_text.set(str(error))
-        self.refresh()
+            self.status_text.set(f'Input not saved: {error}')
+            return False
+        finally:
+            self._committing=False
 
-    def change_count(self, event=None):
+    def edit_pending(self,event=None):
         self.commit_inputs()
-        self.course.set_count(int(self.count.get()[0]))
-        self.refresh()
-        self.status_text.set(f'{self.course.count}-fraction brachytherapy course selected.')
 
-    def load(self, fx):
-        self.commit_inputs()
-        path = filedialog.askopenfilename(title=f'Load Fx{fx+1} DVH TXT', filetypes=[('DVH text files','*.txt'),('All files','*')])
+    def change_count(self,event=None):
+        selected=int(self.count.get()[0])
+        if not self.commit_inputs():
+            self.count.set(f'{self.course.count} Fx')
+            return
+        self.course.set_count(selected)
+        self.refresh()
+        self.status_text.set(f'{self.course.count}-fraction course selected.')
+
+    def load(self,fx):
+        if not self.commit_inputs():
+            return
+        path=filedialog.askopenfilename(title=f'Load Fx {fx+1} DVH TXT',filetypes=[('DVH text files','*.txt'),('All files','*')])
         if not path:
             return
         try:
-            parsed = self.course.load(fx,path)
+            candidate=deepcopy(self.course)
+            parsed=candidate.load(fx,path)
+            for plan in self.comparison.model.plans:
+                if plan:
+                    for label,current,new in [('Patient',plan.patient,parsed.patient),('Patient ID',plan.patient_id,parsed.patient_id)]:
+                        if current and new and current.casefold()!=new.casefold():
+                            raise ValueError(f'{label} does not match the loaded comparison plans. Clear the comparison before changing patients.')
+            self.course=candidate
             self.refresh()
-            message = f'Loaded Fx{fx+1}; carried forward to later fractions that have not been explicitly loaded.'
-            if parsed.ignored:
-                message += ' Ignored: '+', '.join(parsed.ignored)
-            self.status_text.set(message)
-        except (ValueError, OSError) as error:
-            messagebox.showerror('DVH Import Error', str(error), parent=self)
+            self.status_text.set(f'Loaded Fx {fx+1}; carried into later fractions without their own import.'+(' Ignored: '+', '.join(parsed.ignored) if parsed.ignored else ''))
+        except (ValueError,OSError) as error:
+            messagebox.showerror('DVH Import Error',str(error),parent=self)
 
     def clear(self):
-        if messagebox.askyesno('Clear Dashboard', 'Clear all brachytherapy values and reset prior RT?', default='no', parent=self):
-            self.course = Course(count=self.course.count)
+        if messagebox.askyesno('Clear Dashboard','Clear all brachytherapy values and reset prior RT?',default='no',parent=self):
+            self.course=Course(count=self.course.count)
             self.refresh()
             self.status_text.set('Dashboard cleared.')
 
     def export(self):
-        self.commit_inputs()
-        here = Path(__file__).resolve().parent
-        name = 'EQD2_with_tolerances_090126.xlsx'
-        template = next((p for p in (here/name, here.parent/'Matlab'/name, Path.cwd()/name) if p.exists()), None)
+        if not self.commit_inputs():
+            return
+        here=Path(__file__).resolve().parent
+        name='EQD2_with_tolerances_090126.xlsx'
+        template=next((p for p in (here/name,here.parent/'Matlab'/name,Path.cwd()/name) if p.exists()),None)
         if template is None:
-            template = filedialog.askopenfilename(title='Choose EQD2 template', filetypes=[('Excel workbook','*.xlsx')])
+            template=filedialog.askopenfilename(title='Choose EQD2 template',filetypes=[('Excel workbook','*.xlsx')])
         if not template:
             return
-        output = filedialog.asksaveasfilename(title='Export EMBRACE-2 EQD2 Workbook', initialfile='EMBRACE2_Current_Display.xlsx', defaultextension='.xlsx', filetypes=[('Excel workbook','*.xlsx')])
+        output=filedialog.asksaveasfilename(title='Export Excel',initialfile='EMBRACE2_Current_Display.xlsx',defaultextension='.xlsx',filetypes=[('Excel workbook','*.xlsx')])
         if not output:
             return
         try:
-            sheets = export_workbook(self.course,template,output)
+            export_workbook(self.course,template,output)
             self.status_text.set(f'Exported {Path(output).name}. Open in Excel to recalculate formulas.')
-            messagebox.showinfo('Export Complete', 'Updated sheets:\n'+'\n'.join(sheets)+'\n\nSaved to:\n'+output, parent=self)
         except Exception as error:
-            messagebox.showerror('Excel Export Error', str(error), parent=self)
+            messagebox.showerror('Excel Export Error',str(error),parent=self)
+
+    def export_report(self):
+        if not self.commit_inputs():
+            return
+        output=filedialog.asksaveasfilename(title='Export PDF report',initialfile='EMBRACE2_EQD2_Report.pdf',defaultextension='.pdf',filetypes=[('PDF report','*.pdf')])
+        if not output:
+            return
+        try:
+            export_pdf(self.course,output)
+            self.status_text.set(f'Exported {Path(output).name}.')
+        except Exception as error:
+            messagebox.showerror('PDF Export Error',str(error),parent=self)
 
 
 def packaged_smoke_test(report_path):
     """Exercise the frozen GUI and resource lookup without any patient data."""
     import json
     import tempfile
-    app = App()
+    app=App()
     try:
         app.update()
-        app.inputs['ctvhr_D90', 0][0].set('7')
+        app.inputs['ctvhr_D90',0][0].set('7.13')
         app.count.set('5 Fx')
         app.change_count()
-        assert app.totals['ctvhr_D90'].cget('text') == '54.17'
-        assert str(app.buttons[4].cget('state')) == 'normal'
+        before=app.course.values[0]['ctvhr_D90']
+        app.commit_inputs()
+        assert app.course.values[0]['ctvhr_D90']==before==7.13
+        assert app.totals['ctvhr_D90'].cget('text')==fmt(44.25+eqd2(7.13,10))
+        assert str(app.buttons[4].cget('state'))=='normal'
         app.count.set('3 Fx')
         app.change_count()
-        assert str(app.buttons[4].cget('state')) == 'disabled'
-        template = Path(__file__).resolve().parent/'EQD2_with_tolerances_090126.xlsx'
-        assert template.is_file(), 'Bundled template is missing'
+        assert str(app.buttons[4].cget('state'))=='disabled'
+        assert ('ctvhr_volume',0) not in app.inputs
+        for table in app.tables:
+            y=table.header.winfo_rooty()
+            table.canvas.yview_moveto(1)
+            app.update()
+            assert table.header.winfo_rooty()==y
+        template=Path(__file__).resolve().parent/'EQD2_with_tolerances_090126.xlsx'
+        assert template.is_file(),'Bundled template is missing'
         with tempfile.TemporaryDirectory() as folder:
-            sheets = export_workbook(app.course, template, Path(folder)/'smoke.xlsx')
-            assert len(sheets) == 2
-        Path(report_path).write_text(json.dumps({'status': 'passed', 'checks': ['GUI', 'EQD2 total', 'fraction controls', 'bundled template export']}))
+            sheets=export_workbook(app.course,template,Path(folder)/'smoke.xlsx')
+            assert len(sheets)==2
+            pdf=Path(folder)/'smoke.pdf'
+            export_pdf(app.course,pdf)
+            assert pdf.read_bytes().startswith(b'%PDF-')
+            sample=Path(folder)/'synthetic.txt'
+            sample.write_text('Patient: Synthetic QA\nPatient Id: TEST-001\nPlan: QA\nAbsolute Dose - [Gy]\nCumulative mode\nROI: CTV_HR\n1 0 10\n2 5 9\n3 10 0\n')
+            for slot in range(4):
+                app.comparison.model.load(slot,sample,app.course)
+            app.comparison.count.set('3 Fx')
+            app.comparison.refresh()
+            app.notebook.select(app.comparison)
+            app.update()
+            assert app.comparison.results['ctvhr_D90',0].cget('text')=='63.0'
+            from embrace_pdf import export_comparison_pdf
+            export_comparison_pdf(app.comparison.model,app.comparison.settings(),Path(folder)/'comparison.pdf')
+        Path(report_path).write_text(json.dumps({'status':'passed','checks':['GUI','precision preservation','fixed headers','fraction controls','bundled Excel export','PDF export','four-plan comparison','comparison PDF']}))
     finally:
         app.destroy()
 
 
-if __name__ == '__main__':
+if __name__=='__main__':
     import sys
-    if len(sys.argv) == 3 and sys.argv[1] == '--smoke-test':
+    if len(sys.argv)==3 and sys.argv[1]=='--smoke-test':
         packaged_smoke_test(sys.argv[2])
     else:
         App().mainloop()

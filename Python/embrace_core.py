@@ -41,7 +41,7 @@ def number(value):
 
 
 def fmt(value):
-    return '' if value is None else f'{value:.2f}'
+    return '' if value is None else f'{value:.1f}'
 
 
 def eqd2(dose, ab):
@@ -212,3 +212,41 @@ class Course:
                 self.plans[dest] = parsed.plan
                 self.files[dest] = Path(path).name + (f' (carried from Fx{fx+1})' if dest != fx else '')
         return parsed
+
+
+@dataclass
+class PlanComparison:
+    """Four independent single-DVH scenarios using the course's prior RT and N."""
+    plans: list = field(default_factory=lambda: [None]*4)
+    files: list = field(default_factory=lambda: ['']*4)
+
+    def load(self, slot, path, course):
+        if not 0 <= slot < 4:
+            raise ValueError('Choose plan 1 through 4.')
+        parsed = parse_dvh(path)
+        others = [plan for i, plan in enumerate(self.plans) if plan is not None and i != slot]
+        references = [(course.patient, course.patient_id)] + [(p.patient, p.patient_id) for p in others]
+        for patient, patient_id in references:
+            for label, current, new in [('Patient', patient, parsed.patient), ('Patient ID', patient_id, parsed.patient_id)]:
+                if current and new and current.casefold() != new.casefold():
+                    raise ValueError(f'{label} mismatch: loaded {new}; comparison {current}.')
+        self.plans[slot] = parsed
+        self.files[slot] = Path(path).name
+        return parsed
+
+    def scenario(self, slot, course):
+        parsed = self.plans[slot]
+        if parsed is None:
+            return None
+        scenario = Course(count=course.count, dose_per_fx=course.dose_per_fx,
+                          prior_fractions=course.prior_fractions,
+                          patient=parsed.patient, patient_id=parsed.patient_id)
+        for fx in range(course.count):
+            scenario.values[fx] = parsed.metrics.copy()
+            scenario.plans[fx] = parsed.plan
+            scenario.files[fx] = self.files[slot] + ' (repeated scenario)'
+        return scenario
+
+    def clear(self, slot):
+        self.plans[slot] = None
+        self.files[slot] = ''
