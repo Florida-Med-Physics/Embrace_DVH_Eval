@@ -60,7 +60,7 @@ To rebuild locally, create a virtual environment on the target operating system,
 
 ## Compact dashboard and PDF reports
 
-The dashboard uses one decimal place for displayed dose/volume values, retains input precision for calculation, keeps fraction headers visible during scrolling, and reserves blue for editable dose inputs. Structure names and read-only DVH volumes use neutral backgrounds. Source filenames are available under **Show source files**.
+The dashboard uses one decimal place for displayed dose/volume values, retains input precision for calculation, keeps fraction headers visible during scrolling, and reserves blue for editable dose inputs. Structure names and read-only DVH volumes use neutral backgrounds. Source filenames are always visible.
 
 **Export PDF** creates a printable report of the current course, with separate target and OAR pages, prior RT, per-fraction physical doses and EQD2, totals, constraints, color coding and source-file details. PDF generation does not require Excel. The Excel exporter continues to preserve the supplied template's styles and formulas.
 
@@ -73,7 +73,7 @@ Plans must refer to the same patient. The comparison and dashboard keep their DV
 
 ## Dark compact view
 
-Both tabs now use a dark theme. Bright cyan is reserved for editable fields; structure names, volumes, and inactive fields stay neutral. Physical-dose input cells are blue; calculated EQD2 rows directly underneath are white with dark text, and cumulative totals retain their constraint colors. The ESTRO worksheet order is preserved in both tabs: each physical dose row is immediately followed by its EQD2 row. Per-fraction EQD2, cumulative totals and constraints stay on the EQD2 row in the course dashboard. Dose and EQD2 rows are always visible. Volumes are shown by default and can optionally be hidden with **Show volumes**. PDF reports retain all details regardless of screen display settings.
+Both tabs now use a dark theme. Bright cyan is reserved for editable fields; structure names, volumes, and inactive fields stay neutral. Physical-dose input cells are blue; calculated EQD2 value cells directly underneath are white with dark text, and cumulative totals retain their constraint colors. The ESTRO worksheet order is preserved in both tabs: each physical dose row is immediately followed by its EQD2 row. Per-fraction EQD2, cumulative totals and constraints stay on the EQD2 row in the course dashboard. Dose and EQD2 rows are always visible. Volumes and source filenames are always visible; there are no display toggles. Row labels and constraint text stay dark; only physical-dose input cells and calculated EQD2 value cells have blue/white backgrounds. The onscreen color legend is omitted. PDF reports retain all details regardless of screen display settings.
 
 Tight row padding reduces scrolling without combining or hiding dose/EQD2 pairs. Scrolling may still be required depending on screen size; column headers remain fixed.
 

@@ -16,7 +16,6 @@ class ComparisonTab(tk.Frame):
         self.volumes={}
         self.physical={}
         self.headings=[]
-        self.detail_widgets=[]
         top=tk.Frame(self,bg=BG)
         top.pack(fill='x',padx=12,pady=(10,3))
         tk.Label(top,text='PLAN COMPARISON',bg=BG,fg=INK,font=('Arial',17,'bold')).pack(side='left')
@@ -34,8 +33,6 @@ class ComparisonTab(tk.Frame):
         ttk.Button(control,text='Clear comparison',command=self.clear_all).pack(side='right')
         self.instructions=tk.Label(self,text='One TXT per plan. Each dose distribution is repeated for the selected fraction count, then prior RT is added.',bg=BG,fg=MUTED,font=('Arial',10),anchor='w')
         self.instructions.pack(fill='x',padx=12,pady=1)
-        self.show_details=tk.BooleanVar(value=True)
-        ttk.Checkbutton(control,text='Show volumes',variable=self.show_details,command=self.toggle_details).pack(side='right',padx=8)
         cards=tk.Frame(self,bg=BG)
         cards.pack(fill='x',padx=12,pady=4)
         self.names=[]
@@ -47,7 +44,7 @@ class ComparisonTab(tk.Frame):
             buttons.pack(fill='x')
             ttk.Button(buttons,text=f'Load plan {slot+1}',command=lambda i=slot:self.load(i)).pack(side='left')
             ttk.Button(buttons,text='Clear',width=5,command=lambda i=slot:self.clear(i)).pack(side='right')
-            name=tk.Label(frame,text='No DVH loaded',bg=SURFACE,fg=INK,font=('Arial',10),justify='left',anchor='w',wraplength=235,height=2)
+            name=tk.Label(frame,text='No DVH loaded',bg=SURFACE,fg=INK,font=('Arial',10),justify='left',anchor='w',wraplength=235)
             name.pack(fill='x')
             self.names.append(name)
         frame=tk.Frame(self,bg=BG)
@@ -92,15 +89,13 @@ class ComparisonTab(tk.Frame):
                         self.physical[k,slot]=label
                     else:
                         self.volumes[k,slot]=label
-                if not metric.ab:
-                    self.detail_widgets.extend(self.grid_frame.grid_slaves(row=row))
                 row+=1
                 if metric.ab:
-                    self.cell(self.grid_frame,row,0,f'  Total {metric.label.replace("[Gy]", "EQD2 [Gy]")}', 'white')
+                    self.cell(self.grid_frame,row,0,f'  Total {metric.label.replace("[Gy]", "EQD2 [Gy]")}', SURFACE)
                     for slot in range(4):
                         self.results[k,slot]=self.cell(self.grid_frame,row,slot+1,'','white',True)
-                    self.cell(self.grid_frame,row,5,metric.goal,'white')
-                    self.cell(self.grid_frame,row,6,metric.hard,'white')
+                    self.cell(self.grid_frame,row,5,metric.goal,SURFACE)
+                    self.cell(self.grid_frame,row,6,metric.hard,SURFACE)
                     row+=1
         def bind_wheel(widget):
             def scroll(event):
@@ -111,7 +106,6 @@ class ComparisonTab(tk.Frame):
             for child in widget.winfo_children():
                 bind_wheel(child)
         bind_wheel(outer)
-        self.toggle_details()
         footer=tk.Frame(self,bg=BG)
         footer.pack(fill='x',padx=12,pady=(3,8))
         tk.Label(footer,text='Physical dose rows: one fraction. Total EQD2 rows: all fractions + prior RT.',bg=BG,fg=MUTED,font=('Arial',10)).pack(side='left')
@@ -122,10 +116,6 @@ class ComparisonTab(tk.Frame):
         label=tk.Label(parent,text=text,bg=bg,fg=INPUT_INK if bg=='white' else INK,font=('Arial',11,'bold' if bold else 'normal'),anchor='w' if col==0 else 'center',padx=5,pady=0,width=1)
         label.grid(row=row,column=col,sticky='nsew')
         return label
-
-    def toggle_details(self):
-        for widget in self.detail_widgets:
-            widget.grid() if self.show_details.get() else widget.grid_remove()
 
     def settings(self):
         course=deepcopy(self.app.course)

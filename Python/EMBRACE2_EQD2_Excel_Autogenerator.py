@@ -17,7 +17,6 @@ class MetricTable(tk.Frame):
     def __init__(self, parent, app, title, definitions, target):
         super().__init__(parent,bg=BG)
         self.app = app
-        self.detail_widgets=[]
         tk.Label(self,text=title,bg=BG,fg=INK,font=('Arial',12,'bold'),anchor='w').pack(fill='x',pady=(3,3))
         self.header = tk.Frame(self,bg=HEADER)
         self.header.pack(fill='x')
@@ -67,23 +66,17 @@ class MetricTable(tk.Frame):
                         app.inputs[k,fx]=var,entry
                 for col in (6,7,8):
                     self.cell(self.grid_frame,row,col,'',SURFACE)
-                if not metric.ab:
-                    self.detail_widgets.extend(self.grid_frame.grid_slaves(row=row))
                 row+=1
                 if metric.ab:
                     label=metric.label.replace('[Gy]',f'EQD2{metric.ab} [Gy]')
-                    self.cell(self.grid_frame,row,0,'  '+label,'white')
+                    self.cell(self.grid_frame,row,0,'  '+label,SURFACE)
                     for fx in range(5):
                         app.cells[k,fx]=self.cell(self.grid_frame,row,fx+1,'','white')
                     app.totals[k]=self.cell(self.grid_frame,row,6,'','white',bold=True)
-                    self.cell(self.grid_frame,row,7,metric.goal,'white')
-                    self.cell(self.grid_frame,row,8,metric.hard,'white')
+                    self.cell(self.grid_frame,row,7,metric.goal,SURFACE)
+                    self.cell(self.grid_frame,row,8,metric.hard,SURFACE)
                     row+=1
         self.bind_wheel(outer)
-
-    def set_details(self,visible):
-        for widget in self.detail_widgets:
-            widget.grid() if visible else widget.grid_remove()
 
     @staticmethod
     def cell(parent,row,col,text,bg,bold=False):
@@ -130,7 +123,7 @@ class App(tk.Tk):
         self.notebook.add(self.dashboard,text='Course dashboard')
         self.cells,self.totals,self.inputs,self.volumes={},{},{},{}
         self.displayed={}
-        self.status_text=tk.StringVar(value='Blue cells: enter physical dose. Volumes come from the DVH.')
+        self.status_text=tk.StringVar(value='Ready')
         top=tk.Frame(self.dashboard,bg=BG)
         top.pack(fill='x',padx=12,pady=(5,1))
         tk.Label(top,text='EMBRACE-2  |  EQD2',bg=BG,fg=INK,font=('Arial',19,'bold')).pack(side='left')
@@ -151,14 +144,8 @@ class App(tk.Tk):
         self.rx_frame=tk.Frame(self.dashboard,bg=BG)
         # Reserved for the pending prescription controls; no blank row is packed.
         self.plans=self.label('',10)
-        details=tk.Frame(self.dashboard,bg=BG)
-        details.pack(fill='x',padx=12)
-        self.show_details=tk.BooleanVar(value=True)
-        ttk.Checkbutton(details,text='Show volumes',variable=self.show_details,command=self.toggle_details).pack(side='left',padx=(0,12))
-        self.show_files=tk.BooleanVar(value=False)
-        ttk.Checkbutton(details,text='Show source files',variable=self.show_files,command=self.toggle_files).pack(side='left')
-        tk.Label(details,text='Green: goal   Yellow: tolerance   Red: outside tolerance',bg=BG,fg=MUTED,font=('Arial',10)).pack(side='right')
         self.files=tk.Label(self.dashboard,text='',bg=BG,fg=MUTED,anchor='w',justify='left',wraplength=1100,font=('Arial',9))
+        self.files.pack(fill='x',padx=12,pady=2)
         self.prior_frame=tk.Frame(self.dashboard,bg=HEADER,padx=8,pady=5)
         self.prior_frame.pack(fill='x',padx=12,pady=(5,3))
         tk.Label(self.prior_frame,text='PRIOR RT / EBRT',bg=HEADER,fg=INK,font=('Arial',11,'bold')).pack(side='left',padx=(0,12))
@@ -178,7 +165,6 @@ class App(tk.Tk):
             table=MetricTable(body,self,title,definitions,target)
             body.add(table,minsize=150,stretch='always')
             self.tables.append(table)
-            table.set_details(self.show_details.get())
         footer=tk.Frame(self.dashboard,bg=BG)
         footer.pack(fill='x',padx=12,pady=(3,8))
         ttk.Button(footer,text='Export Excel',command=self.export).pack(side='right',padx=(6,0))
@@ -196,21 +182,11 @@ class App(tk.Tk):
         label.pack(fill='x',padx=12,pady=2)
         return label
 
-    def toggle_details(self):
-        for table in self.tables:
-            table.set_details(self.show_details.get())
-
-    def toggle_files(self):
-        if self.show_files.get():
-            self.files.pack(fill='x',padx=12,pady=2,before=self.prior_frame)
-        else:
-            self.files.pack_forget()
-
     def refresh(self):
         c=self.course
         self.patient.configure(text=f'Patient: {c.patient or "—"}   |   ID: {c.patient_id or "—"}')
         self.plans.configure(text='    |    '.join(f'Fx {i+1}: {c.plans[i] or "—"}' for i in range(c.count)))
-        self.files.configure(text='\n'.join(f'Fx {i+1}: {c.files[i] or "No file loaded"}' for i in range(c.count)))
+        self.files.configure(text='    |    '.join(f'Fx {i+1}: {c.files[i] or "No file loaded"}' for i in range(c.count)))
         self.prior_vars[0].set(fmt(c.dose_per_fx))
         self.prior_vars[1].set(str(c.prior_fractions))
         self.prior_displayed=[v.get() for v in self.prior_vars]
@@ -342,17 +318,17 @@ def packaged_smoke_test(report_path):
     app=App()
     try:
         app.update()
-        assert all(w.winfo_ismapped() for table in app.tables for w in table.detail_widgets)
-        for show_volumes in (False,True):
-            app.show_details.set(show_volumes)
-            app.toggle_details()
-            app.update()
-            for key, total in app.totals.items():
-                dose=app.inputs[key,0][1]
-                eqd=app.cells[key,0]
-                assert eqd.winfo_ismapped()
-                assert int(eqd.grid_info()['row'])==int(dose.grid_info()['row'])+1
-                assert total.grid_info()['row']==eqd.grid_info()['row']
+        assert app.files.winfo_ismapped()
+        assert all(w.winfo_ismapped() for w in app.volumes.values())
+        for key,total in app.totals.items():
+            dose=app.inputs[key,0][1]
+            eqd=app.cells[key,0]
+            assert eqd.winfo_ismapped()
+            assert dose.cget('bg')==BLUE and eqd.cget('bg')=='white'
+            assert int(eqd.grid_info()['row'])==int(dose.grid_info()['row'])+1
+            assert total.grid_info()['row']==eqd.grid_info()['row']
+            labels=eqd.master.grid_slaves(row=int(eqd.grid_info()['row']),column=0)
+            assert labels[0].cget('bg')==SURFACE
         app.inputs['ctvhr_D90',0][0].set('7.13')
         app.count.set('5 Fx')
         app.change_count()
