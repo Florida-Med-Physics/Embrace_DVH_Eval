@@ -96,11 +96,11 @@ class ComparisonTab(tk.Frame):
                     self.detail_widgets.extend(self.grid_frame.grid_slaves(row=row))
                 row+=1
                 if metric.ab:
-                    self.cell(self.grid_frame,row,0,f'  Total {metric.label.replace("[Gy]", "EQD2 [Gy]")}', ALT)
+                    self.cell(self.grid_frame,row,0,f'  Total {metric.label.replace("[Gy]", "EQD2 [Gy]")}', 'white')
                     for slot in range(4):
-                        self.results[k,slot]=self.cell(self.grid_frame,row,slot+1,'',SURFACE,True)
-                    self.cell(self.grid_frame,row,5,metric.goal,ALT)
-                    self.cell(self.grid_frame,row,6,metric.hard,ALT)
+                        self.results[k,slot]=self.cell(self.grid_frame,row,slot+1,'','white',True)
+                    self.cell(self.grid_frame,row,5,metric.goal,'white')
+                    self.cell(self.grid_frame,row,6,metric.hard,'white')
                     row+=1
         def bind_wheel(widget):
             def scroll(event):
@@ -119,7 +119,7 @@ class ComparisonTab(tk.Frame):
 
     @staticmethod
     def cell(parent,row,col,text,bg,bold=False):
-        label=tk.Label(parent,text=text,bg=bg,fg=INK,font=('Arial',11,'bold' if bold else 'normal'),anchor='w' if col==0 else 'center',padx=5,pady=0,width=1)
+        label=tk.Label(parent,text=text,bg=bg,fg=INPUT_INK if bg=='white' else INK,font=('Arial',11,'bold' if bold else 'normal'),anchor='w' if col==0 else 'center',padx=5,pady=0,width=1)
         label.grid(row=row,column=col,sticky='nsew')
         return label
 
@@ -149,7 +149,7 @@ class ComparisonTab(tk.Frame):
                     if metric.ab:
                         total=scenario.total(k) if scenario else None
                         result=status(total,metric)
-                        self.results[k,slot].configure(text=fmt(total),bg=COLORS[result],fg=INK if result=='neutral' else INPUT_INK)
+                        self.results[k,slot].configure(text=fmt(total),bg='white' if result=='neutral' else COLORS[result],fg=INPUT_INK)
 
     def load(self,slot):
         if not self.app.commit_inputs():

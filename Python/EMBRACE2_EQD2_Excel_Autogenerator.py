@@ -72,12 +72,12 @@ class MetricTable(tk.Frame):
                 row+=1
                 if metric.ab:
                     label=metric.label.replace('[Gy]',f'EQD2{metric.ab} [Gy]')
-                    self.cell(self.grid_frame,row,0,'  '+label,ALT)
+                    self.cell(self.grid_frame,row,0,'  '+label,'white')
                     for fx in range(5):
-                        app.cells[k,fx]=self.cell(self.grid_frame,row,fx+1,'',ALT)
-                    app.totals[k]=self.cell(self.grid_frame,row,6,'',ALT,bold=True)
-                    self.cell(self.grid_frame,row,7,metric.goal,ALT)
-                    self.cell(self.grid_frame,row,8,metric.hard,ALT)
+                        app.cells[k,fx]=self.cell(self.grid_frame,row,fx+1,'','white')
+                    app.totals[k]=self.cell(self.grid_frame,row,6,'','white',bold=True)
+                    self.cell(self.grid_frame,row,7,metric.goal,'white')
+                    self.cell(self.grid_frame,row,8,metric.hard,'white')
                     row+=1
         self.bind_wheel(outer)
 
@@ -87,7 +87,7 @@ class MetricTable(tk.Frame):
 
     @staticmethod
     def cell(parent,row,col,text,bg,bold=False):
-        label=tk.Label(parent,text=text,bg=bg,fg=INK,anchor='w' if col == 0 else 'center',
+        label=tk.Label(parent,text=text,bg=bg,fg=INPUT_INK if bg=='white' else INK,anchor='w' if col == 0 else 'center',
                        font=('Arial',11,'bold' if bold else 'normal'),padx=5,pady=0,width=1)
         label.grid(row=row,column=col,sticky='nsew',padx=0,pady=0)
         return label
@@ -233,10 +233,10 @@ class App(tk.Tk):
                 k=f'{key}_{metric.key}'
                 for fx in range(5):
                     value=c.values[fx].get(k)
-                    self.cells[k,fx].configure(text=fmt(eqd2(value,metric.ab)) if value is not None and fx<c.count else '',bg=ALT if fx<c.count else INACTIVE)
+                    self.cells[k,fx].configure(text=fmt(eqd2(value,metric.ab)) if value is not None and fx<c.count else '',bg='white' if fx<c.count else INACTIVE,fg=INPUT_INK if fx<c.count else MUTED)
                 total=c.total(k)
                 result=status(total,metric)
-                self.totals[k].configure(text=fmt(total),bg=COLORS[result],fg=INK if result=='neutral' else INPUT_INK)
+                self.totals[k].configure(text=fmt(total),bg='white' if result=='neutral' else COLORS[result],fg=INPUT_INK)
 
         if hasattr(self,'comparison'):
             self.comparison.refresh()
