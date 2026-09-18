@@ -57,7 +57,7 @@ def export_pdf(course, output):
             story.append(PageBreak())
         story += [p('EMBRACE-2 | EQD2 report', title), Spacer(1,5),
                   p(f'Patient: {course.patient or "Not specified"}    |    Patient ID: {course.patient_id or "Not specified"}'),
-                  p(f'Brachytherapy: {course.count} fractions'),
+                  p(f'Prescription: {fmt(course.prescription_gy)} Gy x {course.count} fractions | BT EQD2 (a/b 10): {fmt(course.prescription_eqd2())} Gy'),
                   p(f'Prior RT: {fmt(course.dose_per_fx)} Gy x {course.prior_fractions} fractions = {fmt(course.dose_per_fx*course.prior_fractions)} Gy'),
                   p(f'Prior RT EQD2: {fmt(course.baseline(10))} Gy (a/b = 10)    |    {fmt(course.baseline(3))} Gy (a/b = 3)'),
                   Spacer(1,10), p(heading,section_style), Spacer(1,5)]
@@ -89,9 +89,9 @@ def export_pdf(course, output):
                                  ('FONTNAME',(course.count+1,r),(course.count+1,r),'Helvetica-Bold'),
                                  ('LINEBELOW',(0,r),(-1,r),.2,colors.HexColor('#e3e6e9'))]
         table=Table(rows,colWidths=widths,repeatRows=1,hAlign='LEFT')
-        table.setStyle(TableStyle(commands))
+        table.setStyle(TableStyle(commands+[('GRID',(0,0),(-1,-1),.25,colors.black)]))
         story += [table,Spacer(1,7),p('Green: goal met | Yellow: tolerance met | Red: tolerance exceeded or not met',small),
-                  p('Blank metrics are not included in totals. Values display one decimal; calculations retain stored precision.',small)]
+                  p('Blank metrics are not included. Absolute doses stay unchanged; % doses use prescription. Values display one decimal.',small)]
         if page == 1:
             story += [Spacer(1,9),p('FRACTION SOURCES',section_style)]
             for fx in range(course.count):
@@ -134,7 +134,7 @@ def export_comparison_pdf(comparison, course, output):
             story.append(PageBreak())
         story += [p('EMBRACE-2 | Plan comparison',title),Spacer(1,5),
                   p(f'Patient: {first.patient or "Not specified"}    |    Patient ID: {first.patient_id or "Not specified"}'),
-                  p(f'Each plan repeated for {course.count} fractions. Prior RT: {fmt(course.dose_per_fx)} Gy x {course.prior_fractions}.'),
+                  p(f'Prescription: {fmt(course.prescription_gy)} Gy x {course.count} fractions. Prior RT: {fmt(course.dose_per_fx)} Gy x {course.prior_fractions}.'),
                   p(f'Prior RT EQD2: {fmt(course.baseline(10))} Gy (a/b 10) | {fmt(course.baseline(3))} Gy (a/b 3).'),Spacer(1,7)]
         if page==0:
             for i,plan in enumerate(comparison.plans):
@@ -154,7 +154,7 @@ def export_comparison_pdf(comparison, course, output):
             commands += [('SPAN',(0,r),(-1,r)),('BACKGROUND',(0,r),(-1,r),GRAY),('FONTNAME',(0,r),(-1,r),'Helvetica-Bold'),('TEXTCOLOR',(0,r),(-1,r),UF_BLUE),('NOSPLIT',(0,r),(-1,r+1))]
             for metric in metrics:
                 k=f'{key}_{metric.key}'
-                rows.append([metric.label]+[fmt(plan.metrics.get(k)) if plan else '' for plan in comparison.plans]+['',''])
+                rows.append([metric.label]+[fmt(scenario.values[0].get(k)) if scenario else '' for scenario in scenarios]+['',''])
                 if metric.ab:
                     totals=[scenario.total(k) if scenario else None for scenario in scenarios]
                     rows.append([metric.label.replace('[Gy]','total EQD2 [Gy]')]+[fmt(total) for total in totals]+[metric.goal,metric.hard])
@@ -163,10 +163,10 @@ def export_comparison_pdf(comparison, course, output):
                         commands += [('BACKGROUND',(slot+1,r),(slot+1,r),STATUS[status(total,metric)]),('FONTNAME',(slot+1,r),(slot+1,r),'Helvetica-Bold')]
                     commands.append(('LINEBELOW',(0,r),(-1,r),.2,colors.HexColor('#e3e6e9')))
         table=Table(rows,colWidths=[144,62,62,62,62,62,74],repeatRows=1,hAlign='LEFT')
-        table.setStyle(TableStyle(commands))
+        table.setStyle(TableStyle(commands+[('GRID',(0,0),(-1,-1),.25,colors.black)]))
         story += [table,Spacer(1,7),p('Physical dose rows: one fraction. Total EQD2 rows: all fractions + prior RT.',small),
                   p('Green: goal met | Yellow: tolerance met | Red: tolerance exceeded or not met',small),
-                  p('Blank metrics are not included. Values display one decimal; calculations retain stored precision.',small)]
+                  p('Blank metrics are not included. Absolute doses stay unchanged; % doses use prescription. Values display one decimal.',small)]
     timestamp=datetime.now().strftime('%Y-%m-%d %H:%M')
     def footer(canvas,doc):
         draw_letterhead(canvas)

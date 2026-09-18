@@ -1,6 +1,6 @@
 # EMBRACE-2 EQD2 Dashboard
 
-A Python desktop port of `EMBRACE2_EQD2_Excel_Autogenerator (19).m` supplied September 16, 2026. The Python interface follows the MATLAB dashboard: patient and plan details, prior RT, targets, organs at risk, editable physical doses and volumes, calculated EQD2 rows, colored totals, and Excel export.
+A Python desktop port of `EMBRACE2_EQD2_Excel_Autogenerator (19).m` supplied September 16, 2026. The Python interface follows the MATLAB dashboard: patient and plan details, prior RT, targets, organs at risk, editable physical doses and read-only volumes, calculated EQD2 rows, colored totals, and Excel export.
 
 ## Launch
 
@@ -12,8 +12,8 @@ Requires Python 3.9+ with working Tkinter. For source-code execution, install PD
 
 ## Workflow
 
-1. Select 3, 4, or 5 brachytherapy fractions (default: 4).
-2. Load each fraction's cumulative absolute DVH TXT using its Load button. The button determines the fraction; ROI suffixes do not select it.
+1. Set the adjacent prescription dose and fraction controls (default: 7 Gy × 4 Fx; 3–5 fractions supported).
+2. Load each fraction's cumulative DVH TXT using its Load button. The button determines the fraction; ROI suffixes do not select it.
 3. Each import fills that fraction and later fractions not explicitly loaded. Explicit later imports are protected. Manual edits affect only the edited cell and do not protect the fraction from subsequent carry-forward.
 4. Edit blue physical-dose cells and prior RT values. Structure names are neutral and volumes are read-only. Press Enter or leave the cell to calculate. Prior RT defaults to 1.8 Gy × 25 fractions.
 5. Export the current course. The app finds `EQD2_with_tolerances_090126.xlsx` beside the script or in `Matlab`, or prompts for a template. It updates every sheet whose name contains `FX1-4`.
@@ -32,7 +32,7 @@ Green totals meet the planning goal / soft constraint. Yellow totals miss that g
 
 ## Deliberate safeguards in the Python port
 
-Patient name and ID are checked together before changing course state. Nonfinite numeric input and explicitly relative volume exports are rejected. The source template cannot be overwritten. Export clears missing/inactive physical inputs, including the template's sixth-fraction column, so its sample values and physical carry formulas cannot contribute. Calculated formulas, formatting and other archive contents remain intact. Stale formula caches in updated sheets are removed and full Excel recalculation is requested on open. The exporter expects the supplied template's existing cell layout.
+Patient name and ID are checked together before changing course state. Nonfinite numeric input and ambiguous dose units are rejected. Relative-volume exports require a total structure volume in cc, read from metadata or requested during import. The source template cannot be overwritten. Export clears missing/inactive physical inputs, including the template's sixth-fraction column, so its sample values and physical carry formulas cannot contribute. Calculated formulas, formatting and other archive contents remain intact. Stale formula caches in updated sheets are removed and full Excel recalculation is requested on open. The exporter expects the supplied template's existing cell layout.
 
 The template contains additional sections beyond the dashboard; those remain unchanged. Export is a populated template, not a screenshot of the dashboard. Blank metrics can display differently after Excel recalculates the template's existing formulas.
 
@@ -78,3 +78,9 @@ Both tabs now use a dark theme. Bright cyan is reserved for editable fields; str
 Tight row padding reduces scrolling without combining or hiding dose/EQD2 pairs. Scrolling may still be required depending on screen size; column headers remain fixed.
 
 PDFs use a provisional text-based UFHPTI header, the supplied MATLAB application's navy/orange palette, aligned tables and page footers. This is not yet an exact match to an institutional document template; a representative UFHPTI document is needed to finalize the letterhead, typography and footer.
+
+## Prescription and relative DVHs
+
+Both tabs provide prescription dose and fraction controls. Absolute Gy/cGy DVH doses retain their actual values when the prescription changes. Relative dose (%) is converted using the selected Gy/Fx prescription and updates when that prescription changes. Blue dose cells accept either Gy or an explicit percentage such as `90%`; entering Gy replaces the relative link. The prescription EQD2 summary is distinct from structure-specific DVH totals.
+
+The importer supports explicitly labeled Gy, cGy, or % dose axes and cc or % volume axes, with either dose/volume or index/dose/volume columns. Relative volumes require the total structure volume in cc. Thin black gridlines surround every table cell, including calculated white cells.

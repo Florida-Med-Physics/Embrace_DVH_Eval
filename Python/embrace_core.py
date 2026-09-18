@@ -92,6 +92,19 @@ def dose_at_volume(rows, target):
     return min(rows, key=lambda pair: abs(pair[1]-target))[0]
 
 
+class MissingVolumeError(ValueError):
+    def __init__(self, names):
+        self.names = names
+        super().__init__('Relative volume needs an absolute structure volume in cc: '+', '.join(names))
+
+
+def positive_dose(value):
+    dose = number(value)
+    if dose is None or dose <= 0:
+        raise ValueError('Prescription dose per fraction must be greater than zero.')
+    return dose
+
+
 @dataclass
 class DVH:
     patient: str
@@ -99,53 +112,107 @@ class DVH:
     plan: str
     metrics: dict
     ignored: list
+    relative_doses: dict = field(default_factory=dict)
+    dose_unit: str = 'Gy'
+    volume_unit: str = 'cc'
+
+    def metrics_at_prescription(self, prescription):
+        result = self.metrics.copy()
+        for key, ratio in self.relative_doses.items():
+            result[key] = number(ratio * positive_dose(prescription))
+        return result
 
 
-def parse_dvh(path):
+def parse_dvh(path, prescription_gy=None, volumes_cc=None):
+    """Read indexed or two-column cumulative DVHs with explicit axis units.
+
+    Percent dose uses the user-selected per-fraction prescription. Percent
+    volume requires an explicit cc volume in the ROI metadata or user input.
+    Older app-compatible files without a volume-axis header retain cc units.
+    """
     raw = Path(path).read_bytes()
     text = raw.decode('utf-16' if raw.startswith((b'\xff\xfe', b'\xfe\xff')) else 'utf-8-sig')
-    units = re.search(r'Absolute Dose\s*-\s*\[(cGy|Gy)\]', text, re.I)
-    if not units:
-        raise ValueError('Expected Absolute Dose - [cGy] or Absolute Dose - [Gy].')
     if not re.search(r'Cumulative mode', text, re.I):
         raise ValueError('This app expects a cumulative DVH export.')
-    if re.search(r'(?:Relative Volume|Volume\s*-?\s*\[%\])', text, re.I):
-        raise ValueError('Absolute cumulative volume in cc is required, not percent volume.')
-    scale = .01 if units[1].lower() == 'cgy' else 1
+    numeric = r'([-+]?\d*\.?\d+(?:[Ee][-+]?\d+)?)'
+    dose_units = set(u.lower() for u in re.findall(r'(?:Absolute\s+|Relative\s+)?Dose\s*(?:-\s*)?\[(cGy|Gy|%)\]', text, re.I))
+    if len(dose_units) != 1:
+        raise ValueError('Expected one dose axis: Dose [Gy], [cGy], or [%]. Mixed dose columns are not supported.')
+    dose_unit = next(iter(dose_units))
+    if dose_unit == '%':
+        if prescription_gy is None:
+            raise ValueError('Relative dose requires a prescription in Gy per fraction.')
+        prescription_gy = positive_dose(prescription_gy)
+    # A Volume [cc]: metadata value is not a DVH volume-axis declaration.
+    axes = '\n'.join(line for line in text.splitlines() if not re.search(r'Volume\s*\[[^]]+\]\s*:', line, re.I))
+    volume_units = set(u.lower() for u in re.findall(r'(?:Absolute\s+|Relative\s+)?Volume\s*(?:-\s*)?\[(cc|cm3|cm³|%)\]', axes, re.I))
+    volume_units = {'cc' if u != '%' else '%' for u in volume_units}
+    if len(volume_units) > 1:
+        raise ValueError('Mixed volume axes are not supported in one DVH import.')
+    if re.search(r'Relative Volume',axes,re.I) and '%' not in volume_units:
+        raise ValueError('Relative volume must explicitly use Volume [%].')
+    volume_unit = next(iter(volume_units), 'cc')
     def header(key):
         match = re.search(r'^\s*' + re.escape(key) + r':[ \t]*(.*)$', text, re.M)
         return match[1].strip() if match else ''
     parts = re.split(r'^[ \t]*ROI:[ \t]*(.+?)[ \t]*\r?$', text, flags=re.M)
     if len(parts) == 1:
         raise ValueError('No ROI sections were found.')
-    metrics, ignored = {}, []
-    numeric = r'([-+]?\d*\.?\d+(?:[Ee][-+]?\d+)?)'
+    metrics, ratios, ignored, missing = {}, {}, [], []
     for name, body in zip(parts[1::2], parts[2::2]):
+        name = name.strip()
         key = structure_key(name)
-        rows = [(float(d)*scale, float(v)) for d, v in re.findall(r'^\s*\d+\s+'+numeric+r'\s+'+numeric+r'\s*$', body, re.M)]
-        rows = [(d, v) for d, v in rows if math.isfinite(d) and math.isfinite(v)]
+        rows = [(float(d), float(v)) for d,v in re.findall(r'^[ \t]*(?:\d+[ \t]+)?'+numeric+r'[ \t]+'+numeric+r'[ \t]*\r?$', body, re.M)]
         if not key or not rows:
-            ignored.append(name.strip())
+            ignored.append(name)
             continue
-        total = max(v for _, v in rows)
-        for _, structure, definitions in STRUCTURES:
+        if any(not math.isfinite(d) or not math.isfinite(v) or d<0 or v<0 for d,v in rows):
+            raise ValueError(f'{name}: dose and volume values must be finite and nonnegative.')
+        if volume_unit == '%':
+            if any(v>100.000001 for _,v in rows):
+                raise ValueError(f'{name}: relative volume must be between 0 and 100 percent.')
+            supplied = (volumes_cc or {}).get(name)
+            meta = re.search(r'(?:ROI\s+|Structure\s+|Total\s+)?Volume\s*\[(?:cc|cm3|cm³)\]\s*:\s*'+numeric,body,re.I)
+            if not meta:
+                meta = re.search(r'(?:ROI\s+|Structure\s+|Total\s+)?Volume\s*:\s*'+numeric+r'\s*(?:cc|cm3|cm³)\b',body,re.I)
+            total = float(supplied) if supplied is not None else (float(meta[1]) if meta else None)
+            if total is None:
+                missing.append(name)
+                continue
+            if not math.isfinite(total) or total<=0:
+                raise ValueError(f'{name}: structure volume must be a positive number in cc.')
+            rows = [(d,v*total/100) for d,v in rows]
+        else:
+            total = max(v for _,v in rows)
+        # Calculate relative dose ratios before rounding; repeated changes of
+        # prescription always use the original ratios, avoiding scaling drift.
+        scale = .01 if dose_unit in ('cgy','%') else 1
+        rows = [(d*scale,v) for d,v in rows]
+        for _,structure,definitions in STRUCTURES:
             if structure != key:
                 continue
             for m in definitions:
+                metric_key = f'{key}_{m.key}'
                 if m.key == 'volume':
                     value = total
                 else:
                     target = total*float(m.key[1:])/100 if m.ab == 10 else (.1 if m.key == 'D0p1' else 2)
-                    value = dose_at_volume(rows, target)
-                metrics[f'{key}_{m.key}'] = number(value)
+                    value = dose_at_volume(rows,target)
+                    if dose_unit == '%':
+                        ratios[metric_key] = value
+                        value *= prescription_gy
+                metrics[metric_key] = number(value)
+    if missing:
+        raise MissingVolumeError(missing)
     if not metrics:
         raise ValueError('No recognized EMBRACE-2 structures with numeric DVH data were found.')
-    return DVH(header('Patient'), header('Patient Id'), header('Plan'), metrics, ignored)
+    return DVH(header('Patient'),header('Patient Id'),header('Plan'),metrics,ignored,ratios,dose_unit,volume_unit)
 
 
 @dataclass
 class Course:
     count: int = 4
+    prescription_gy: float = 7.0
     dose_per_fx: float = 1.8
     prior_fractions: int = 25
     patient: str = ''
@@ -154,6 +221,17 @@ class Course:
     files: list = field(default_factory=lambda: ['']*5)
     plans: list = field(default_factory=lambda: ['']*5)
     explicit: list = field(default_factory=lambda: [False]*5)
+    relative_doses: list = field(default_factory=lambda: [{} for _ in range(5)])
+
+    def set_prescription(self, dose):
+        dose = positive_dose(dose)
+        self.prescription_gy = dose
+        for fx in range(5):
+            for key,ratio in self.relative_doses[fx].items():
+                self.values[fx][key] = number(ratio*dose)
+
+    def prescription_eqd2(self, ab=10):
+        return self.count * eqd2(self.prescription_gy,ab)
 
     def baseline(self, ab):
         return self.prior_fractions * eqd2(self.dose_per_fx, ab)
@@ -165,7 +243,18 @@ class Course:
     def edit(self, fx, key, value):
         if not 0 <= fx < self.count or key not in METRICS:
             raise ValueError('This cell is not editable.')
-        self.values[fx][key] = number(value)
+        if isinstance(value,str) and value.strip().endswith('%'):
+            ratio = float(value.strip()[:-1])/100
+            if not math.isfinite(ratio) or ratio < 0 or not METRICS[key].ab:
+                raise ValueError('Enter a nonnegative dose percentage.')
+            self.values[fx][key] = number(ratio*self.prescription_gy)
+            self.relative_doses[fx][key] = ratio
+        else:
+            dose = number(value)
+            if dose is not None and dose<0:
+                raise ValueError('Dose must be nonnegative.')
+            self.values[fx][key] = dose
+            self.relative_doses[fx].pop(key,None)
 
     def set_prior(self, dose, count):
         d, n = float(dose), float(count)
@@ -175,6 +264,7 @@ class Course:
 
     def copy(self, src, dest):
         self.values[dest] = self.values[src].copy()
+        self.relative_doses[dest] = self.relative_doses[src].copy()
         self.plans[dest] = self.plans[src]
         self.files[dest] = re.sub(r' \(carried from Fx\d+\)$', '', self.files[src]) + f' (carried from Fx{src+1})'
 
@@ -185,6 +275,7 @@ class Course:
         if count < old:
             for fx in range(count, 5):
                 self.values[fx] = {}
+                self.relative_doses[fx] = {}
                 self.files[fx] = self.plans[fx] = ''
                 self.explicit[fx] = False
         elif count > old:
@@ -194,10 +285,10 @@ class Course:
                     self.copy(sources[-1], fx)
         self.count = count
 
-    def load(self, fx, path):
+    def load(self, fx, path, volumes_cc=None):
         if not 0 <= fx < self.count:
             raise ValueError('Inactive fraction.')
-        parsed = parse_dvh(path)
+        parsed = parse_dvh(path,self.prescription_gy,volumes_cc)
         # Validate both fields before changing any state.
         for label, current, new in [('Patient', self.patient, parsed.patient), ('Patient ID', self.patient_id, parsed.patient_id)]:
             if current and new and current.casefold() != new.casefold():
@@ -209,6 +300,9 @@ class Course:
             if dest == fx or not self.explicit[dest]:
                 # MATLAB preserves existing metrics absent from the new file.
                 self.values[dest].update(parsed.metrics)
+                for key in parsed.metrics:
+                    self.relative_doses[dest].pop(key,None)
+                self.relative_doses[dest].update(parsed.relative_doses)
                 self.plans[dest] = parsed.plan
                 self.files[dest] = Path(path).name + (f' (carried from Fx{fx+1})' if dest != fx else '')
         return parsed
@@ -220,10 +314,10 @@ class PlanComparison:
     plans: list = field(default_factory=lambda: [None]*4)
     files: list = field(default_factory=lambda: ['']*4)
 
-    def load(self, slot, path, course):
+    def load(self, slot, path, course, volumes_cc=None):
         if not 0 <= slot < 4:
             raise ValueError('Choose plan 1 through 4.')
-        parsed = parse_dvh(path)
+        parsed = parse_dvh(path,course.prescription_gy,volumes_cc)
         others = [plan for i, plan in enumerate(self.plans) if plan is not None and i != slot]
         references = [(course.patient, course.patient_id)] + [(p.patient, p.patient_id) for p in others]
         for patient, patient_id in references:
@@ -238,11 +332,12 @@ class PlanComparison:
         parsed = self.plans[slot]
         if parsed is None:
             return None
-        scenario = Course(count=course.count, dose_per_fx=course.dose_per_fx,
+        scenario = Course(count=course.count, prescription_gy=course.prescription_gy, dose_per_fx=course.dose_per_fx,
                           prior_fractions=course.prior_fractions,
                           patient=parsed.patient, patient_id=parsed.patient_id)
         for fx in range(course.count):
-            scenario.values[fx] = parsed.metrics.copy()
+            scenario.values[fx] = parsed.metrics_at_prescription(course.prescription_gy)
+            scenario.relative_doses[fx] = parsed.relative_doses.copy()
             scenario.plans[fx] = parsed.plan
             scenario.files[fx] = self.files[slot] + ' (repeated scenario)'
         return scenario

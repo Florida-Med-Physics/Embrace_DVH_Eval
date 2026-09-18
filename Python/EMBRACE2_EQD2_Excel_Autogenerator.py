@@ -6,6 +6,7 @@ import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 from embrace_core import Course, STRUCTURES, eqd2, fmt, status
 from embrace_export import export_workbook
+from embrace_import import import_with_volumes
 from embrace_pdf import export_pdf
 from embrace_comparison import ComparisonTab
 
@@ -28,11 +29,11 @@ class MetricTable(tk.Frame):
         self.scroll.pack(side='right',fill='y')
         self.canvas.pack(side='left',fill='both',expand=True)
         self.header.configure(padx=0)
-        self.head_grid = tk.Frame(self.header,bg=HEADER)
+        self.head_grid = tk.Frame(self.header,bg='black')
         self.head_grid.pack(side='left',fill='x',expand=True)
         self.gutter = tk.Frame(self.header,bg=HEADER,width=self.scroll.winfo_reqwidth())
         self.gutter.pack(side='right',fill='y')
-        self.grid_frame = tk.Frame(self.canvas,bg=SURFACE)
+        self.grid_frame = tk.Frame(self.canvas,bg='black')
         self.window = self.canvas.create_window((0,0),window=self.grid_frame,anchor='nw')
         self.grid_frame.bind('<Configure>',lambda e:self.canvas.configure(scrollregion=self.canvas.bbox('all')))
         self.canvas.bind('<Configure>',self.resize)
@@ -46,7 +47,7 @@ class MetricTable(tk.Frame):
         row=0
         for title,key,metrics in definitions:
             section=tk.Label(self.grid_frame,text=title,bg=HEADER,fg=INK,anchor='w',font=('Arial',11,'bold'),padx=7,pady=1)
-            section.grid(row=row,column=0,columnspan=9,sticky='nsew')
+            section.grid(row=row,column=0,columnspan=9,sticky='nsew',padx=1,pady=(1 if row==0 else 0,1))
             row+=1
             for metric in metrics:
                 k=f'{key}_{metric.key}'
@@ -59,8 +60,8 @@ class MetricTable(tk.Frame):
                         entry=tk.Entry(self.grid_frame,textvariable=var,bg=BLUE,fg=INPUT_INK,
                                        disabledbackground=INACTIVE,disabledforeground='#7b858f',
                                        justify='center',relief='flat',borderwidth=0,width=1,font=('Arial',11),
-                                       highlightthickness=1,highlightbackground=BLUE,highlightcolor='#327ca5')
-                        entry.grid(row=row,column=fx+1,sticky='nsew',padx=1,pady=0)
+                                       highlightthickness=0)
+                        entry.grid(row=row,column=fx+1,sticky='nsew',padx=(0,1),pady=(0,1))
                         entry.bind('<Return>',app.edit_pending)
                         entry.bind('<FocusOut>',app.edit_pending)
                         app.inputs[k,fx]=var,entry
@@ -82,7 +83,7 @@ class MetricTable(tk.Frame):
     def cell(parent,row,col,text,bg,bold=False):
         label=tk.Label(parent,text=text,bg=bg,fg=INPUT_INK if bg=='white' else INK,anchor='w' if col == 0 else 'center',
                        font=('Arial',11,'bold' if bold else 'normal'),padx=5,pady=0,width=1)
-        label.grid(row=row,column=col,sticky='nsew',padx=0,pady=0)
+        label.grid(row=row,column=col,sticky='nsew',padx=(1 if col==0 else 0,1),pady=(1 if row==0 else 0,1))
         return label
 
     def resize(self,event):
@@ -133,16 +134,27 @@ class App(tk.Tk):
         controls.pack(fill='x',padx=12,pady=3)
         tk.Label(controls,text='Brachytherapy',bg=BG,fg=INK,font=('Arial',11,'bold')).pack(side='left',padx=(0,8))
         self.count=tk.StringVar(value='4 Fx')
-        count=ttk.Combobox(controls,textvariable=self.count,values=['3 Fx','4 Fx','5 Fx'],width=5,state='readonly')
-        count.pack(side='left',padx=(0,8))
-        count.bind('<<ComboboxSelected>>',self.change_count)
         self.buttons=[]
         for fx in range(5):
             button=ttk.Button(controls,text=f'Load Fx {fx+1}',command=lambda i=fx:self.load(i),width=11)
             button.pack(side='left',padx=2)
             self.buttons.append(button)
         self.rx_frame=tk.Frame(self.dashboard,bg=BG)
-        # Reserved for the pending prescription controls; no blank row is packed.
+        self.rx_frame.pack(fill='x',padx=12,pady=2)
+        tk.Label(self.rx_frame,text='Prescription',bg=BG,fg=INK,font=('Arial',11)).pack(side='left',padx=(0,6))
+        self.prescription_var=tk.StringVar(value='7.0')
+        prescription=tk.Entry(self.rx_frame,textvariable=self.prescription_var,bg=BLUE,fg=INPUT_INK,
+                              justify='center',relief='flat',borderwidth=0,highlightthickness=1,
+                              highlightbackground='black',highlightcolor='black',font=('Arial',11),width=6)
+        prescription.pack(side='left')
+        prescription.bind('<Return>',self.edit_pending)
+        prescription.bind('<FocusOut>',self.edit_pending)
+        tk.Label(self.rx_frame,text='Gy / Fx  ×',bg=BG,fg=INK,font=('Arial',10)).pack(side='left',padx=(5,12))
+        count=ttk.Combobox(self.rx_frame,textvariable=self.count,values=['3 Fx','4 Fx','5 Fx'],width=5,state='readonly')
+        count.pack(side='left',padx=(0,12))
+        count.bind('<<ComboboxSelected>>',self.change_count)
+        self.rx_summary=tk.Label(self.rx_frame,bg=BG,fg=INK,font=('Arial',10))
+        self.rx_summary.pack(side='left')
         self.plans=self.label('',10)
         self.files=tk.Label(self.dashboard,text='',bg=BG,fg=MUTED,anchor='w',justify='left',wraplength=1100,font=('Arial',9))
         self.files.pack(fill='x',padx=12,pady=2)
@@ -151,7 +163,7 @@ class App(tk.Tk):
         tk.Label(self.prior_frame,text='PRIOR RT / EBRT',bg=HEADER,fg=INK,font=('Arial',11,'bold')).pack(side='left',padx=(0,12))
         self.prior_vars=[tk.StringVar(),tk.StringVar()]
         for i,text in enumerate(('Gy / Fx','fractions')):
-            entry=tk.Entry(self.prior_frame,textvariable=self.prior_vars[i],bg=BLUE,fg=INPUT_INK,justify='center',relief='flat',font=('Arial',11),width=6)
+            entry=tk.Entry(self.prior_frame,textvariable=self.prior_vars[i],bg=BLUE,fg=INPUT_INK,justify='center',relief='flat',borderwidth=0,highlightthickness=1,highlightbackground='black',highlightcolor='black',font=('Arial',11),width=6)
             entry.pack(side='left',ipady=2)
             entry.bind('<Return>',self.edit_pending)
             entry.bind('<FocusOut>',self.edit_pending)
@@ -184,6 +196,9 @@ class App(tk.Tk):
 
     def refresh(self):
         c=self.course
+        self.prescription_var.set(fmt(c.prescription_gy))
+        self.prescription_displayed=self.prescription_var.get()
+        self.rx_summary.configure(text=f'{c.count} x {fmt(c.prescription_gy)} Gy = {fmt(c.count*c.prescription_gy)} Gy  |  Prescription BT EQD2₁₀: {fmt(c.prescription_eqd2())} Gy')
         self.patient.configure(text=f'Patient: {c.patient or "—"}   |   ID: {c.patient_id or "—"}')
         self.plans.configure(text='    |    '.join(f'Fx {i+1}: {c.plans[i] or "—"}' for i in range(c.count)))
         self.files.configure(text='    |    '.join(f'Fx {i+1}: {c.files[i] or "No file loaded"}' for i in range(c.count)))
@@ -224,6 +239,8 @@ class App(tk.Tk):
         self._committing=True
         try:
             updated=deepcopy(self.course)
+            if self.prescription_var.get()!=self.prescription_displayed:
+                updated.set_prescription(self.prescription_var.get())
             for (key,fx),(var,_) in self.inputs.items():
                 if fx<updated.count and var.get()!=self.displayed[key,fx]:
                     updated.edit(fx,key,var.get())
@@ -261,7 +278,9 @@ class App(tk.Tk):
             return
         try:
             candidate=deepcopy(self.course)
-            parsed=candidate.load(fx,path)
+            parsed=import_with_volumes(self,lambda volumes:candidate.load(fx,path,volumes))
+            if parsed is None:
+                return
             for plan in self.comparison.model.plans:
                 if plan:
                     for label,current,new in [('Patient',plan.patient,parsed.patient),('Patient ID',plan.patient_id,parsed.patient_id)]:
@@ -318,6 +337,15 @@ def packaged_smoke_test(report_path):
     app=App()
     try:
         app.update()
+        assert app.course.count==4 and app.course.prescription_gy==7.0
+        app.inputs['ctvhr_D90',0][0].set('100%')
+        app.commit_inputs()
+        app.prescription_var.set('8.0')
+        app.commit_inputs()
+        assert app.course.values[0]['ctvhr_D90']==8.0
+        app.prescription_var.set('7.0')
+        app.commit_inputs()
+        assert app.course.values[0]['ctvhr_D90']==7.0
         assert app.files.winfo_ismapped()
         assert all(w.winfo_ismapped() for w in app.volumes.values())
         for key,total in app.totals.items():

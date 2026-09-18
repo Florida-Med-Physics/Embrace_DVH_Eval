@@ -2,9 +2,10 @@
 from copy import deepcopy
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
-from embrace_core import PlanComparison, STRUCTURES, fmt, status
+from embrace_core import PlanComparison, STRUCTURES, fmt, status, positive_dose
 
-from embrace_theme import BG, SURFACE, ALT, HEADER, INK, MUTED, INPUT_INK, COLORS
+from embrace_import import import_with_volumes
+from embrace_theme import BG, SURFACE, ALT, HEADER, INK, MUTED, BLUE, INPUT_INK, COLORS
 
 
 class ComparisonTab(tk.Frame):
@@ -27,7 +28,17 @@ class ComparisonTab(tk.Frame):
         self.count=tk.StringVar(value=app.count.get())
         count=ttk.Combobox(control,textvariable=self.count,values=['3 Fx','4 Fx','5 Fx'],state='readonly',width=5)
         count.pack(side='left',padx=6)
-        count.bind('<<ComboboxSelected>>',lambda event:self.refresh())
+        count.bind('<<ComboboxSelected>>',self.commit_prescription)
+        self.prescription_gy=7.0
+        self.prescription_var=tk.StringVar(value='7.0')
+        self.prescription_displayed='7.0'
+        rx=tk.Entry(control,textvariable=self.prescription_var,bg=BLUE,fg=INPUT_INK,
+                    width=5,justify='center',relief='flat',borderwidth=0,highlightthickness=1,
+                    highlightbackground='black',highlightcolor='black',font=('Arial',11))
+        rx.pack(side='left',padx=(8,3))
+        rx.bind('<Return>',self.commit_prescription)
+        rx.bind('<FocusOut>',self.commit_prescription)
+        tk.Label(control,text='Gy / Fx',bg=BG,fg=INK,font=('Arial',10)).pack(side='left')
         self.summary=tk.Label(control,bg=BG,fg=INK,font=('Arial',10))
         self.summary.pack(side='left',padx=10)
         ttk.Button(control,text='Clear comparison',command=self.clear_all).pack(side='right')
@@ -51,7 +62,7 @@ class ComparisonTab(tk.Frame):
         frame.pack(fill='both',expand=True,padx=12,pady=4)
         self.header=tk.Frame(frame,bg=HEADER)
         self.header.pack(fill='x')
-        self.head_grid=tk.Frame(self.header,bg=HEADER)
+        self.head_grid=tk.Frame(self.header,bg='black')
         self.head_grid.pack(side='left',fill='x',expand=True)
         outer=tk.Frame(frame,bg=SURFACE)
         outer.pack(fill='both',expand=True)
@@ -61,7 +72,7 @@ class ComparisonTab(tk.Frame):
         scrollbar.pack(side='right',fill='y')
         self.canvas.pack(side='left',fill='both',expand=True)
         tk.Frame(self.header,bg=HEADER,width=scrollbar.winfo_reqwidth()).pack(side='right',fill='y')
-        self.grid_frame=tk.Frame(self.canvas,bg=SURFACE)
+        self.grid_frame=tk.Frame(self.canvas,bg='black')
         win=self.canvas.create_window((0,0),window=self.grid_frame,anchor='nw')
         def resize(event):
             self.canvas.itemconfigure(win,width=event.width)
@@ -78,7 +89,7 @@ class ComparisonTab(tk.Frame):
         row=0
         for title,key,metrics in STRUCTURES:
             header=tk.Label(self.grid_frame,text=title,bg=HEADER,fg=INK,font=('Arial',11,'bold'),anchor='w',padx=7,pady=2)
-            header.grid(row=row,column=0,columnspan=7,sticky='nsew')
+            header.grid(row=row,column=0,columnspan=7,sticky='nsew',padx=1,pady=(1 if row==0 else 0,1))
             row+=1
             for metric in metrics:
                 k=f'{key}_{metric.key}'
@@ -89,6 +100,8 @@ class ComparisonTab(tk.Frame):
                         self.physical[k,slot]=label
                     else:
                         self.volumes[k,slot]=label
+                for col in (5,6):
+                    self.cell(self.grid_frame,row,col,'',SURFACE)
                 row+=1
                 if metric.ab:
                     self.cell(self.grid_frame,row,0,f'  Total {metric.label.replace("[Gy]", "EQD2 [Gy]")}', SURFACE)
@@ -114,17 +127,31 @@ class ComparisonTab(tk.Frame):
     @staticmethod
     def cell(parent,row,col,text,bg,bold=False):
         label=tk.Label(parent,text=text,bg=bg,fg=INPUT_INK if bg=='white' else INK,font=('Arial',11,'bold' if bold else 'normal'),anchor='w' if col==0 else 'center',padx=5,pady=0,width=1)
-        label.grid(row=row,column=col,sticky='nsew')
+        label.grid(row=row,column=col,sticky='nsew',padx=(1 if col==0 else 0,1),pady=(1 if row==0 else 0,1))
         return label
+
+    def commit_prescription(self,event=None):
+        try:
+            if self.prescription_var.get()!=self.prescription_displayed:
+                self.prescription_gy=positive_dose(self.prescription_var.get())
+            self.prescription_var.set(fmt(self.prescription_gy))
+            self.prescription_displayed=self.prescription_var.get()
+            self.refresh()
+            return True
+        except ValueError as error:
+            self.app.status_text.set(str(error))
+            messagebox.showerror('Prescription',str(error),parent=self)
+            return False
 
     def settings(self):
         course=deepcopy(self.app.course)
         course.count=int(self.count.get()[0])
+        course.prescription_gy=self.prescription_gy
         return course
 
     def refresh(self):
         c=self.settings()
-        self.summary.configure(text=f'Prior RT: {fmt(c.dose_per_fx)} Gy x {c.prior_fractions}   |   EQD2: {fmt(c.baseline(10))} / {fmt(c.baseline(3))} Gy (10 / 3)')
+        self.summary.configure(text=f'Rx BT EQD2₁₀: {fmt(c.prescription_eqd2())} Gy | Prior RT: {fmt(c.dose_per_fx)} x {c.prior_fractions} Gy')
         first=next((p for p in self.model.plans if p),None)
         self.patient.configure(text=f'Patient: {first.patient or "—"} | ID: {first.patient_id or "—"}' if first else '')
         for slot,parsed in enumerate(self.model.plans):
@@ -133,7 +160,7 @@ class ComparisonTab(tk.Frame):
             for _,key,metrics in STRUCTURES:
                 for metric in metrics:
                     k=f'{key}_{metric.key}'
-                    value=parsed.metrics.get(k) if parsed else None
+                    value=scenario.values[0].get(k) if scenario else None
                     label=self.physical[k,slot] if metric.ab else self.volumes[k,slot]
                     label.configure(text=fmt(value))
                     if metric.ab:
@@ -142,13 +169,15 @@ class ComparisonTab(tk.Frame):
                         self.results[k,slot].configure(text=fmt(total),bg='white' if result=='neutral' else COLORS[result],fg=INPUT_INK)
 
     def load(self,slot):
-        if not self.app.commit_inputs():
+        if not self.commit_prescription() or not self.app.commit_inputs():
             return
         path=filedialog.askopenfilename(title=f'Load plan {slot+1} DVH',filetypes=[('DVH text files','*.txt'),('All files','*')])
         if not path:
             return
         try:
-            self.model.load(slot,path,self.app.course)
+            parsed=import_with_volumes(self,lambda volumes:self.model.load(slot,path,self.settings(),volumes))
+            if parsed is None:
+                return
             self.refresh()
         except (ValueError,OSError) as error:
             messagebox.showerror('Plan comparison import',str(error),parent=self)
@@ -163,7 +192,7 @@ class ComparisonTab(tk.Frame):
             self.refresh()
 
     def export_report(self):
-        if not self.app.commit_inputs():
+        if not self.commit_prescription() or not self.app.commit_inputs():
             return
         from embrace_pdf import export_comparison_pdf
         path=filedialog.asksaveasfilename(title='Export plan comparison',initialfile='EMBRACE2_Plan_Comparison.pdf',defaultextension='.pdf',filetypes=[('PDF report','*.pdf')])
