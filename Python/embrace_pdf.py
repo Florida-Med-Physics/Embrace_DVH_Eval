@@ -12,10 +12,30 @@ from reportlab.platypus import SimpleDocTemplate, Paragraph, Table, TableStyle, 
 
 from embrace_core import STRUCTURES, eqd2, fmt, status
 
+# Colors carried over from the supplied MATLAB application's UF palette.
+UF_BLUE = colors.HexColor('#002169')
+UF_ORANGE = colors.HexColor('#fa4a00')
 INK = colors.HexColor('#17212b')
 GRAY = colors.HexColor('#e9ecef')
 STATUS = {'neutral': colors.white, 'pass': colors.HexColor('#d5ead8'),
           'warn': colors.HexColor('#fff0bb'), 'fail': colors.HexColor('#f6d0cd')}
+
+
+def draw_letterhead(canvas):
+    """Text-based UFHPTI treatment pending a supplied institutional template."""
+    canvas.saveState()
+    canvas.setFillColor(UF_BLUE)
+    canvas.setFont('Helvetica-Bold',22)
+    canvas.drawString(42,754,'UFHPTI')
+    canvas.setFont('Helvetica',9)
+    canvas.drawRightString(570,758,'EMBRACE-II / EQD2')
+    canvas.setStrokeColor(UF_BLUE)
+    canvas.setLineWidth(1)
+    canvas.line(42,741,570,741)
+    canvas.setStrokeColor(UF_ORANGE)
+    canvas.setLineWidth(3)
+    canvas.line(42,741,108,741)
+    canvas.restoreState()
 
 
 def export_pdf(course, output):
@@ -25,9 +45,9 @@ def export_pdf(course, output):
         raise ValueError('There are no brachytherapy fraction values to export.')
     normal = ParagraphStyle('Body', fontName='Helvetica', fontSize=9, leading=12, textColor=INK)
     small = ParagraphStyle('Small', parent=normal, fontSize=8, leading=10)
-    title = ParagraphStyle('Title', parent=normal, fontName='Helvetica-Bold', fontSize=17, leading=21)
+    title = ParagraphStyle('Title', parent=normal, fontName='Helvetica-Bold', fontSize=16, leading=20, textColor=UF_BLUE)
     section_style = ParagraphStyle('Section', parent=normal, fontName='Helvetica-Bold', fontSize=11, leading=14)
-    cell_style = ParagraphStyle('Cell', parent=small, fontSize=7.5, leading=9, alignment=1)
+    cell_style = ParagraphStyle('Cell', parent=small, fontSize=7.5, leading=9, alignment=1, textColor=colors.white)
     def p(value, style=normal):
         return Paragraph(escape(str(value)), style)
 
@@ -46,17 +66,17 @@ def export_pdf(course, output):
         rows = [[p(h.replace('\n',' '),cell_style) for h in headers]]
         widths = [148]+[38]*course.count+[72,65,65]
         # Use the full printable width, allocating extra room to the metric label.
-        widths[0] += 540-sum(widths)
+        widths[0] += 528-sum(widths)
         commands = [('FONTNAME',(0,0),(-1,-1),'Helvetica'), ('FONTSIZE',(0,0),(-1,-1),8),
                     ('TEXTCOLOR',(0,0),(-1,-1),INK), ('VALIGN',(0,0),(-1,-1),'MIDDLE'),
-                    ('ALIGN',(1,0),(-1,-1),'CENTER'), ('BACKGROUND',(0,0),(-1,0),GRAY),
+                    ('ALIGN',(1,0),(-1,-1),'CENTER'), ('BACKGROUND',(0,0),(-1,0),UF_BLUE),
                     ('TOPPADDING',(0,0),(-1,-1),3), ('BOTTOMPADDING',(0,0),(-1,-1),3),
                     ('LINEBELOW',(0,0),(-1,0),.6,colors.HexColor('#b8c0c7'))]
         for name,key,metrics in definitions:
             r=len(rows)
             rows.append([name]+['']*(course.count+3))
             commands += [('SPAN',(0,r),(-1,r)),('BACKGROUND',(0,r),(-1,r),GRAY),
-                         ('FONTNAME',(0,r),(-1,r),'Helvetica-Bold'), ('NOSPLIT',(0,r),(-1,r+1))]
+                         ('FONTNAME',(0,r),(-1,r),'Helvetica-Bold'),('TEXTCOLOR',(0,r),(-1,r),UF_BLUE), ('NOSPLIT',(0,r),(-1,r+1))]
             for metric in metrics:
                 k=f'{key}_{metric.key}'
                 rows.append([metric.label]+[fmt(course.values[fx].get(k)) for fx in range(course.count)]+['','',''])
@@ -78,14 +98,15 @@ def export_pdf(course, output):
                 story.append(p(f'Fx {fx+1} | Plan: {course.plans[fx] or "Not specified"} | {course.files[fx] or "Manual / not loaded"}',small))
     timestamp=datetime.now().strftime('%Y-%m-%d %H:%M')
     def footer(canvas, doc):
+        draw_letterhead(canvas)
         canvas.setFont('Helvetica',8)
         canvas.setFillColor(INK)
-        canvas.drawString(36,22,f'EMBRACE-2 EQD2 | Exported {timestamp}')
-        canvas.drawRightString(576,22,f'Page {doc.page}')
+        canvas.drawString(42,22,f'UFHPTI | EQD2 | Exported {timestamp}')
+        canvas.drawRightString(570,22,f'Page {doc.page}')
     fd,temp=tempfile.mkstemp(suffix='.pdf',dir=output.parent)
     os.close(fd)
     try:
-        doc=SimpleDocTemplate(temp,pagesize=letter,leftMargin=36,rightMargin=36,topMargin=30,bottomMargin=36,
+        doc=SimpleDocTemplate(temp,pagesize=letter,leftMargin=36,rightMargin=36,topMargin=68,bottomMargin=36,
                               title='EMBRACE-2 EQD2 report',author='EMBRACE EQD2')
         doc.build(story,onFirstPage=footer,onLaterPages=footer)
         os.replace(temp,output)
@@ -101,8 +122,8 @@ def export_comparison_pdf(comparison, course, output):
     output=Path(output)
     normal=ParagraphStyle('CompareBody',fontName='Helvetica',fontSize=9,leading=12,textColor=INK)
     small=ParagraphStyle('CompareSmall',parent=normal,fontSize=8,leading=10)
-    title=ParagraphStyle('CompareTitle',parent=normal,fontName='Helvetica-Bold',fontSize=16,leading=20)
-    head=ParagraphStyle('CompareHeader',parent=small,alignment=1)
+    title=ParagraphStyle('CompareTitle',parent=normal,fontName='Helvetica-Bold',fontSize=16,leading=20,textColor=UF_BLUE)
+    head=ParagraphStyle('CompareHeader',parent=small,alignment=1,textColor=colors.white)
     def p(text,style=normal):
         return Paragraph(escape(str(text)),style)
     scenarios=[comparison.scenario(i,course) for i in range(4)]
@@ -125,12 +146,12 @@ def export_comparison_pdf(comparison, course, output):
         rows=[[p(t,head) for t in ['Structure / metric','Plan 1','Plan 2','Plan 3','Plan 4','Goal / soft','Tolerance / hard']]]
         commands=[('FONTNAME',(0,0),(-1,-1),'Helvetica'),('FONTSIZE',(0,0),(-1,-1),8),
                   ('VALIGN',(0,0),(-1,-1),'MIDDLE'),('ALIGN',(1,0),(-1,-1),'CENTER'),
-                  ('TEXTCOLOR',(0,0),(-1,-1),INK),('BACKGROUND',(0,0),(-1,0),GRAY),
+                  ('TEXTCOLOR',(0,0),(-1,-1),INK),('BACKGROUND',(0,0),(-1,0),UF_BLUE),
                   ('TOPPADDING',(0,0),(-1,-1),3),('BOTTOMPADDING',(0,0),(-1,-1),3)]
         for name,key,metrics in definitions:
             r=len(rows)
             rows.append([name]+['']*6)
-            commands += [('SPAN',(0,r),(-1,r)),('BACKGROUND',(0,r),(-1,r),GRAY),('FONTNAME',(0,r),(-1,r),'Helvetica-Bold'),('NOSPLIT',(0,r),(-1,r+1))]
+            commands += [('SPAN',(0,r),(-1,r)),('BACKGROUND',(0,r),(-1,r),GRAY),('FONTNAME',(0,r),(-1,r),'Helvetica-Bold'),('TEXTCOLOR',(0,r),(-1,r),UF_BLUE),('NOSPLIT',(0,r),(-1,r+1))]
             for metric in metrics:
                 k=f'{key}_{metric.key}'
                 rows.append([metric.label]+[fmt(plan.metrics.get(k)) if plan else '' for plan in comparison.plans]+['',''])
@@ -141,20 +162,21 @@ def export_comparison_pdf(comparison, course, output):
                     for slot,total in enumerate(totals):
                         commands += [('BACKGROUND',(slot+1,r),(slot+1,r),STATUS[status(total,metric)]),('FONTNAME',(slot+1,r),(slot+1,r),'Helvetica-Bold')]
                     commands.append(('LINEBELOW',(0,r),(-1,r),.2,colors.HexColor('#e3e6e9')))
-        table=Table(rows,colWidths=[156,62,62,62,62,62,74],repeatRows=1,hAlign='LEFT')
+        table=Table(rows,colWidths=[144,62,62,62,62,62,74],repeatRows=1,hAlign='LEFT')
         table.setStyle(TableStyle(commands))
         story += [table,Spacer(1,7),p('Physical dose rows: one fraction. Total EQD2 rows: all fractions + prior RT.',small),
                   p('Green: goal met | Yellow: tolerance met | Red: tolerance exceeded or not met',small),
                   p('Blank metrics are not included. Values display one decimal; calculations retain stored precision.',small)]
     timestamp=datetime.now().strftime('%Y-%m-%d %H:%M')
     def footer(canvas,doc):
+        draw_letterhead(canvas)
         canvas.setFont('Helvetica',8)
-        canvas.drawString(36,22,f'EMBRACE-2 comparison | Exported {timestamp}')
-        canvas.drawRightString(576,22,f'Page {doc.page}')
+        canvas.drawString(42,22,f'UFHPTI | Plan comparison | Exported {timestamp}')
+        canvas.drawRightString(570,22,f'Page {doc.page}')
     fd,temp=tempfile.mkstemp(suffix='.pdf',dir=output.parent)
     os.close(fd)
     try:
-        doc=SimpleDocTemplate(temp,pagesize=letter,leftMargin=36,rightMargin=36,topMargin=30,bottomMargin=36,title='EMBRACE-2 Plan Comparison',author='EMBRACE EQD2')
+        doc=SimpleDocTemplate(temp,pagesize=letter,leftMargin=36,rightMargin=36,topMargin=68,bottomMargin=36,title='EMBRACE-2 Plan Comparison',author='EMBRACE EQD2')
         doc.build(story,onFirstPage=footer,onLaterPages=footer)
         os.replace(temp,output)
     finally:

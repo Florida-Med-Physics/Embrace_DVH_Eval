@@ -69,3 +69,12 @@ The dashboard uses one decimal place for displayed dose/volume values, retains i
 Load one TXT into each of up to four plan slots. Each slot is an independent scenario: the same DVH doses are repeated for the selected 3, 4, or 5 fractions, then the shared prior RT contribution is added. Physical-dose rows show one fraction; total EQD2 rows show the entire scenario. Planning goals and soft/hard constraints are the same as the course dashboard. The comparison has its own fraction-count selector so exploring a shorter course does not erase imported fractions in the dashboard. Changing the comparison count or shared prior RT updates every loaded comparison plan.
 
 Plans must refer to the same patient. The comparison and dashboard keep their DVH inputs separate. A plan reload fully replaces that comparison slot, including clearing metrics absent from the new file. **Export comparison PDF** saves the side-by-side scenario results. Empty cells indicate unavailable metrics, not zero dose.
+
+
+## Dark compact view
+
+Both tabs now use a dark theme. Bright cyan is reserved for editable fields; structure names, read-only results, and inactive fields stay neutral. In the course dashboard, physical doses, cumulative EQD2 totals, and constraints share one row. **Show volumes / fraction EQD2** reveals the additional calculation rows. In Plan comparison, cumulative EQD2 is shown by default; **Show doses / volumes** reveals the underlying per-fraction values. PDF reports retain all details regardless of screen display settings.
+
+The compact tables fit at the default 1160 x 850 window size on the development Mac. Smaller screens, larger operating-system text settings, or expanded details may still require scrolling; column headers remain fixed.
+
+PDFs use a provisional text-based UFHPTI header, the supplied MATLAB application's navy/orange palette, aligned tables and page footers. This is not yet an exact match to an institutional document template; a representative UFHPTI document is needed to finalize the letterhead, typography and footer.
