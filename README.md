@@ -73,8 +73,8 @@ Plans must refer to the same patient. The comparison and dashboard keep their DV
 
 ## Dark compact view
 
-Both tabs now use a dark theme. Bright cyan is reserved for editable fields; structure names, read-only results, and inactive fields stay neutral. In the course dashboard, physical doses, cumulative EQD2 totals, and constraints share one row. **Show volumes / fraction EQD2** reveals the additional calculation rows. In Plan comparison, cumulative EQD2 is shown by default; **Show doses / volumes** reveals the underlying per-fraction values. PDF reports retain all details regardless of screen display settings.
+Both tabs now use a dark theme. Bright cyan is reserved for editable fields; structure names, read-only results, and inactive fields stay neutral. The ESTRO worksheet order is preserved in both tabs: each physical dose row is immediately followed by its EQD2 row. Per-fraction EQD2, cumulative totals and constraints stay on the EQD2 row in the course dashboard. Dose and EQD2 rows are always visible. Volumes are shown by default and can optionally be hidden with **Show volumes**. PDF reports retain all details regardless of screen display settings.
 
-The compact tables fit at the default 1160 x 850 window size on the development Mac. Smaller screens, larger operating-system text settings, or expanded details may still require scrolling; column headers remain fixed.
+Tight row padding reduces scrolling without combining or hiding dose/EQD2 pairs. Scrolling may still be required depending on screen size; column headers remain fixed.
 
 PDFs use a provisional text-based UFHPTI header, the supplied MATLAB application's navy/orange palette, aligned tables and page footers. This is not yet an exact match to an institutional document template; a representative UFHPTI document is needed to finalize the letterhead, typography and footer.

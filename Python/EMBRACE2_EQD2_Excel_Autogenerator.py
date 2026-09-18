@@ -65,13 +65,9 @@ class MetricTable(tk.Frame):
                         entry.bind('<Return>',app.edit_pending)
                         entry.bind('<FocusOut>',app.edit_pending)
                         app.inputs[k,fx]=var,entry
-                if metric.ab:
-                    app.totals[k]=self.cell(self.grid_frame,row,6,'',SURFACE,bold=True)
-                    self.cell(self.grid_frame,row,7,metric.goal,SURFACE)
-                    self.cell(self.grid_frame,row,8,metric.hard,SURFACE)
-                else:
-                    for col in (6,7,8):
-                        self.cell(self.grid_frame,row,col,'',SURFACE)
+                for col in (6,7,8):
+                    self.cell(self.grid_frame,row,col,'',SURFACE)
+                if not metric.ab:
                     self.detail_widgets.extend(self.grid_frame.grid_slaves(row=row))
                 row+=1
                 if metric.ab:
@@ -79,9 +75,9 @@ class MetricTable(tk.Frame):
                     self.cell(self.grid_frame,row,0,'  '+label,ALT)
                     for fx in range(5):
                         app.cells[k,fx]=self.cell(self.grid_frame,row,fx+1,'',ALT)
-                    for col in (6,7,8):
-                        self.cell(self.grid_frame,row,col,'',ALT)
-                    self.detail_widgets.extend(self.grid_frame.grid_slaves(row=row))
+                    app.totals[k]=self.cell(self.grid_frame,row,6,'',ALT,bold=True)
+                    self.cell(self.grid_frame,row,7,metric.goal,ALT)
+                    self.cell(self.grid_frame,row,8,metric.hard,ALT)
                     row+=1
         self.bind_wheel(outer)
 
@@ -157,8 +153,8 @@ class App(tk.Tk):
         self.plans=self.label('',10)
         details=tk.Frame(self.dashboard,bg=BG)
         details.pack(fill='x',padx=12)
-        self.show_details=tk.BooleanVar(value=False)
-        ttk.Checkbutton(details,text='Show volumes / fraction EQD2',variable=self.show_details,command=self.toggle_details).pack(side='left',padx=(0,12))
+        self.show_details=tk.BooleanVar(value=True)
+        ttk.Checkbutton(details,text='Show volumes',variable=self.show_details,command=self.toggle_details).pack(side='left',padx=(0,12))
         self.show_files=tk.BooleanVar(value=False)
         ttk.Checkbutton(details,text='Show source files',variable=self.show_files,command=self.toggle_files).pack(side='left')
         tk.Label(details,text='Green: goal   Yellow: tolerance   Red: outside tolerance',bg=BG,fg=MUTED,font=('Arial',10)).pack(side='right')
@@ -182,7 +178,7 @@ class App(tk.Tk):
             table=MetricTable(body,self,title,definitions,target)
             body.add(table,minsize=150,stretch='always')
             self.tables.append(table)
-            table.set_details(False)
+            table.set_details(self.show_details.get())
         footer=tk.Frame(self.dashboard,bg=BG)
         footer.pack(fill='x',padx=12,pady=(3,8))
         ttk.Button(footer,text='Export Excel',command=self.export).pack(side='right',padx=(6,0))
@@ -346,13 +342,17 @@ def packaged_smoke_test(report_path):
     app=App()
     try:
         app.update()
-        assert all(not w.winfo_ismapped() for table in app.tables for w in table.detail_widgets)
-        app.show_details.set(True)
-        app.toggle_details()
-        app.update()
         assert all(w.winfo_ismapped() for table in app.tables for w in table.detail_widgets)
-        app.show_details.set(False)
-        app.toggle_details()
+        for show_volumes in (False,True):
+            app.show_details.set(show_volumes)
+            app.toggle_details()
+            app.update()
+            for key, total in app.totals.items():
+                dose=app.inputs[key,0][1]
+                eqd=app.cells[key,0]
+                assert eqd.winfo_ismapped()
+                assert int(eqd.grid_info()['row'])==int(dose.grid_info()['row'])+1
+                assert total.grid_info()['row']==eqd.grid_info()['row']
         app.inputs['ctvhr_D90',0][0].set('7.13')
         app.count.set('5 Fx')
         app.change_count()
@@ -389,7 +389,7 @@ def packaged_smoke_test(report_path):
             assert app.comparison.results['ctvhr_D90',0].cget('text')=='63.0'
             from embrace_pdf import export_comparison_pdf
             export_comparison_pdf(app.comparison.model,app.comparison.settings(),Path(folder)/'comparison.pdf')
-        Path(report_path).write_text(json.dumps({'status':'passed','checks':['GUI','precision preservation','fixed headers','fraction controls','bundled Excel export','PDF export','four-plan comparison','comparison PDF']}))
+        Path(report_path).write_text(json.dumps({'status':'passed','checks':['GUI','precision preservation','fixed headers','ESTRO dose/EQD2 row order','fraction controls','bundled Excel export','PDF export','four-plan comparison','comparison PDF']}))
     finally:
         app.destroy()
 

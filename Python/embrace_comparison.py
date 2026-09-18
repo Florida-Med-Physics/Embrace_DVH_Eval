@@ -34,8 +34,8 @@ class ComparisonTab(tk.Frame):
         ttk.Button(control,text='Clear comparison',command=self.clear_all).pack(side='right')
         self.instructions=tk.Label(self,text='One TXT per plan. Each dose distribution is repeated for the selected fraction count, then prior RT is added.',bg=BG,fg=MUTED,font=('Arial',10),anchor='w')
         self.instructions.pack(fill='x',padx=12,pady=1)
-        self.show_details=tk.BooleanVar(value=False)
-        ttk.Checkbutton(control,text='Show doses / volumes',variable=self.show_details,command=self.toggle_details).pack(side='right',padx=8)
+        self.show_details=tk.BooleanVar(value=True)
+        ttk.Checkbutton(control,text='Show volumes',variable=self.show_details,command=self.toggle_details).pack(side='right',padx=8)
         cards=tk.Frame(self,bg=BG)
         cards.pack(fill='x',padx=12,pady=4)
         self.names=[]
@@ -92,7 +92,8 @@ class ComparisonTab(tk.Frame):
                         self.physical[k,slot]=label
                     else:
                         self.volumes[k,slot]=label
-                self.detail_widgets.extend(self.grid_frame.grid_slaves(row=row))
+                if not metric.ab:
+                    self.detail_widgets.extend(self.grid_frame.grid_slaves(row=row))
                 row+=1
                 if metric.ab:
                     self.cell(self.grid_frame,row,0,f'  Total {metric.label.replace("[Gy]", "EQD2 [Gy]")}', ALT)
