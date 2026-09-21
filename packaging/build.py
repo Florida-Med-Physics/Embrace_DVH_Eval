@@ -16,6 +16,8 @@ command = [sys.executable, '-m', 'PyInstaller', '--noconfirm', '--clean',
            '--workpath', str(ROOT/'build'), '--specpath', str(ROOT/'build'),
            '--add-data', str(ROOT/'Matlab/EQD2_with_tolerances_090126.xlsx')+':.',
            '--onefile' if platform_name == 'Windows' else '--onedir']
+command += ['--add-data', str(ROOT/'Python/assets')+':assets',
+            '--icon', str(ROOT/'Python/assets'/('eqd2.icns' if platform_name == 'Darwin' else 'eqd2.ico'))]
 if platform_name == 'Darwin':
     command += ['--osx-bundle-identifier', 'org.floridamedphysics.embrace-eqd2']
 command += [str(ROOT/'Python/EMBRACE2_EQD2_Excel_Autogenerator.py')]

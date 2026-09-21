@@ -13,27 +13,30 @@ from embrace_comparison import ComparisonTab
 from embrace_theme import BG, SURFACE, ALT, HEADER, INK, MUTED, BLUE, INPUT_INK, INACTIVE, COLORS, apply_theme
 
 
+FRAME = '#202326'
+
+
 class MetricTable(tk.Frame):
     """An independently scrolling table with a stationary aligned column header."""
     def __init__(self, parent, app, title, definitions, target):
-        super().__init__(parent,bg=BG)
+        super().__init__(parent,bg=FRAME)
         self.app = app
-        tk.Label(self,text=title,bg=BG,fg=INK,font=('Arial',12,'bold'),anchor='w').pack(fill='x',pady=(3,3))
+        tk.Label(self,text=title,bg=FRAME,fg='white',font=('Arial',12,'bold'),anchor='w').pack(fill='x',pady=(3,3))
         self.header = tk.Frame(self,bg=HEADER)
         self.header.pack(fill='x')
-        outer = tk.Frame(self,bg=SURFACE)
+        outer = tk.Frame(self,bg='white')
         outer.pack(fill='both',expand=True)
-        self.canvas = tk.Canvas(outer,bg=SURFACE,highlightthickness=0,yscrollincrement=22)
+        self.canvas = tk.Canvas(outer,bg='white',highlightthickness=0,yscrollincrement=22)
         self.scroll = ttk.Scrollbar(outer,orient='vertical',command=self.canvas.yview)
         self.canvas.configure(yscrollcommand=self.scroll.set)
         self.scroll.pack(side='right',fill='y')
         self.canvas.pack(side='left',fill='both',expand=True)
         self.header.configure(padx=0)
-        self.head_grid = tk.Frame(self.header,bg='black')
+        self.head_grid = tk.Frame(self.header,bg=HEADER)
         self.head_grid.pack(side='left',fill='x',expand=True)
         self.gutter = tk.Frame(self.header,bg=HEADER,width=self.scroll.winfo_reqwidth())
         self.gutter.pack(side='right',fill='y')
-        self.grid_frame = tk.Frame(self.canvas,bg='black')
+        self.grid_frame = tk.Frame(self.canvas,bg='#d3d8dc')
         self.window = self.canvas.create_window((0,0),window=self.grid_frame,anchor='nw')
         self.grid_frame.bind('<Configure>',lambda e:self.canvas.configure(scrollregion=self.canvas.bbox('all')))
         self.canvas.bind('<Configure>',self.resize)
@@ -46,44 +49,44 @@ class MetricTable(tk.Frame):
             self.headings.append(label)
         row=0
         for title,key,metrics in definitions:
-            section=tk.Label(self.grid_frame,text=title,bg=HEADER,fg=INK,anchor='w',font=('Arial',11,'bold'),padx=7,pady=1)
-            section.grid(row=row,column=0,columnspan=9,sticky='nsew',padx=1,pady=(1 if row==0 else 0,1))
+            section=tk.Label(self.grid_frame,text=title,bg=HEADER,fg=INK,anchor='w',font=('Arial',10,'bold'),padx=7,pady=0)
+            section.grid(row=row,column=0,columnspan=9,sticky='nsew')
             row+=1
             for metric in metrics:
                 k=f'{key}_{metric.key}'
-                self.cell(self.grid_frame,row,0,'  '+metric.label,SURFACE)
+                self.cell(self.grid_frame,row,0,'  '+metric.label,'white')
                 for fx in range(5):
                     if metric.key == 'volume':
-                        app.volumes[k,fx]=self.cell(self.grid_frame,row,fx+1,'',SURFACE)
+                        app.volumes[k,fx]=self.cell(self.grid_frame,row,fx+1,'','white')
                     else:
                         var=tk.StringVar()
-                        entry=tk.Entry(self.grid_frame,textvariable=var,bg=BLUE,fg=INPUT_INK,
-                                       disabledbackground=INACTIVE,disabledforeground='#7b858f',
-                                       justify='center',relief='flat',borderwidth=0,width=1,font=('Arial',11),
-                                       highlightthickness=0)
-                        entry.grid(row=row,column=fx+1,sticky='nsew',padx=(0,1),pady=(0,1))
+                        entry=tk.Entry(self.grid_frame,textvariable=var,bg=BLUE,fg=INK,
+                                       disabledbackground='#eef0f2',disabledforeground='#7b858f',
+                                       justify='center',relief='flat',borderwidth=0,width=1,font=('Arial',10),
+                                       highlightthickness=1,highlightbackground=BLUE,highlightcolor='#327ca5')
+                        entry.grid(row=row,column=fx+1,sticky='nsew',padx=1,pady=0)
                         entry.bind('<Return>',app.edit_pending)
                         entry.bind('<FocusOut>',app.edit_pending)
                         app.inputs[k,fx]=var,entry
                 for col in (6,7,8):
-                    self.cell(self.grid_frame,row,col,'',SURFACE)
+                    self.cell(self.grid_frame,row,col,'','white')
                 row+=1
                 if metric.ab:
                     label=metric.label.replace('[Gy]',f'EQD2{metric.ab} [Gy]')
-                    self.cell(self.grid_frame,row,0,'  '+label,SURFACE)
+                    self.cell(self.grid_frame,row,0,'  '+label,'#fafbfc')
                     for fx in range(5):
-                        app.cells[k,fx]=self.cell(self.grid_frame,row,fx+1,'','white')
+                        app.cells[k,fx]=self.cell(self.grid_frame,row,fx+1,'','#fafbfc')
                     app.totals[k]=self.cell(self.grid_frame,row,6,'','white',bold=True)
-                    self.cell(self.grid_frame,row,7,metric.goal,SURFACE)
-                    self.cell(self.grid_frame,row,8,metric.hard,SURFACE)
+                    self.cell(self.grid_frame,row,7,metric.goal,'#fafbfc')
+                    self.cell(self.grid_frame,row,8,metric.hard,'#fafbfc')
                     row+=1
         self.bind_wheel(outer)
 
     @staticmethod
     def cell(parent,row,col,text,bg,bold=False):
-        label=tk.Label(parent,text=text,bg=bg,fg=INPUT_INK if bg=='white' else INK,anchor='w' if col == 0 else 'center',
-                       font=('Arial',11,'bold' if bold else 'normal'),padx=5,pady=0,width=1)
-        label.grid(row=row,column=col,sticky='nsew',padx=(1 if col==0 else 0,1),pady=(1 if row==0 else 0,1))
+        label=tk.Label(parent,text=text,bg=bg,fg=INK,anchor='w' if col == 0 else 'center',
+                       font=('Arial',10,'bold' if bold else 'normal'),padx=5,pady=0,width=1)
+        label.grid(row=row,column=col,sticky='nsew',padx=(0,1),pady=(0,1))
         return label
 
     def resize(self,event):
@@ -111,88 +114,103 @@ class MetricTable(tk.Frame):
 class App(tk.Tk):
     def __init__(self):
         super().__init__()
+        from embrace_icon import apply_icon
+        apply_icon(self)
         self.course=Course()
         self._committing=False
-        self.title('EMBRACE-2 EQD2')
-        self.geometry('1160x850')
+        self.title('EMBRACE-2 EQD2 Excel Autogenerator')
+        self.geometry('1200x980')
         self.minsize(1020,680)
         self.configure(bg=BG)
         apply_theme(self)
         self.notebook=ttk.Notebook(self)
         self.notebook.pack(fill='both',expand=True)
-        self.dashboard=tk.Frame(self.notebook,bg=BG)
+        self.dashboard=tk.Frame(self.notebook,bg=FRAME)
         self.notebook.add(self.dashboard,text='Course dashboard')
         self.cells,self.totals,self.inputs,self.volumes={},{},{},{}
         self.displayed={}
-        self.status_text=tk.StringVar(value='Ready')
-        top=tk.Frame(self.dashboard,bg=BG)
-        top.pack(fill='x',padx=12,pady=(5,1))
-        tk.Label(top,text='EMBRACE-2  |  EQD2',bg=BG,fg=INK,font=('Arial',19,'bold')).pack(side='left')
-        self.patient=tk.Label(top,bg=BG,fg=INK,font=('Arial',11),anchor='e')
-        self.patient.pack(side='right',fill='x',expand=True,padx=(20,0))
-        controls=tk.Frame(self.dashboard,bg=BG)
+        self.status_text=tk.StringVar(value='Blue cells: enter physical dose. Volumes come from the DVH.')
+        top=tk.Frame(self.dashboard,bg=FRAME)
+        top.pack(fill='x',padx=12,pady=(12,10))
+        tk.Label(top,text='EMBRACE-2  EQD2 Excel Autogenerator',bg=FRAME,fg='white',font=('Arial',22,'bold')).pack(side='left')
+        tk.Label(top,text='UFHPTI',bg=FRAME,fg='#fa4a00',font=('Arial',12,'bold')).pack(side='right')
+        controls=tk.Frame(self.dashboard,bg=BG,padx=8,pady=6)
         controls.pack(fill='x',padx=12,pady=3)
-        tk.Label(controls,text='Brachytherapy',bg=BG,fg=INK,font=('Arial',11,'bold')).pack(side='left',padx=(0,8))
+        self.patient=tk.Label(controls,bg=BG,fg=INK,font=('Arial',10),anchor='w')
+        self.patient.pack(side='left',fill='x',expand=True)
         self.count=tk.StringVar(value='4 Fx')
+        count=ttk.Combobox(controls,textvariable=self.count,values=['3 Fx','4 Fx','5 Fx'],width=5,state='readonly')
+        count.pack(side='left',padx=(0,8))
+        count.bind('<<ComboboxSelected>>',self.change_count)
         self.buttons=[]
         for fx in range(5):
-            button=ttk.Button(controls,text=f'Load Fx {fx+1}',command=lambda i=fx:self.load(i),width=11)
+            button=ttk.Button(controls,text=f'Load F{fx+1}',command=lambda i=fx:self.load(i),width=8)
             button.pack(side='left',padx=2)
             self.buttons.append(button)
         self.rx_frame=tk.Frame(self.dashboard,bg=BG)
         self.rx_frame.pack(fill='x',padx=12,pady=2)
-        tk.Label(self.rx_frame,text='Prescription',bg=BG,fg=INK,font=('Arial',11)).pack(side='left',padx=(0,6))
+        tk.Label(self.rx_frame,text='Prescription',bg=BG,fg=INK,font=('Arial',10)).pack(side='left',padx=(0,6))
         self.prescription_var=tk.StringVar(value='7.0')
         prescription=tk.Entry(self.rx_frame,textvariable=self.prescription_var,bg=BLUE,fg=INPUT_INK,
                               justify='center',relief='flat',borderwidth=0,highlightthickness=1,
-                              highlightbackground='black',highlightcolor='black',font=('Arial',11),width=6)
+                              highlightbackground='black',highlightcolor='black',font=('Arial',10),width=6)
         prescription.pack(side='left')
         prescription.bind('<Return>',self.edit_pending)
         prescription.bind('<FocusOut>',self.edit_pending)
         tk.Label(self.rx_frame,text='Gy / Fx  ×',bg=BG,fg=INK,font=('Arial',10)).pack(side='left',padx=(5,12))
-        count=ttk.Combobox(self.rx_frame,textvariable=self.count,values=['3 Fx','4 Fx','5 Fx'],width=5,state='readonly')
-        count.pack(side='left',padx=(0,12))
-        count.bind('<<ComboboxSelected>>',self.change_count)
         self.rx_summary=tk.Label(self.rx_frame,bg=BG,fg=INK,font=('Arial',10))
         self.rx_summary.pack(side='left')
         self.plans=self.label('',10)
-        self.files=tk.Label(self.dashboard,text='',bg=BG,fg=MUTED,anchor='w',justify='left',wraplength=1100,font=('Arial',9))
+        self.show_files=tk.BooleanVar(value=True)
+        self.files=tk.Label(self.dashboard,text='',bg=FRAME,fg='white',anchor='w',justify='left',wraplength=1160,font=('Arial',9))
         self.files.pack(fill='x',padx=12,pady=2)
-        self.prior_frame=tk.Frame(self.dashboard,bg=HEADER,padx=8,pady=5)
-        self.prior_frame.pack(fill='x',padx=12,pady=(5,3))
-        tk.Label(self.prior_frame,text='PRIOR RT / EBRT',bg=HEADER,fg=INK,font=('Arial',11,'bold')).pack(side='left',padx=(0,12))
+        tk.Label(self.dashboard,text='PRIOR RT / EBRT FRACTIONATION',bg=FRAME,fg='white',font=('Arial',12,'bold'),anchor='w').pack(fill='x',padx=12,pady=(6,3))
+        self.prior_frame=tk.Frame(self.dashboard,bg='#d3d8dc')
+        self.prior_frame.pack(fill='x',padx=12,pady=(0,6))
+        for col,title in enumerate(('Parameter','Value','EQD2 [Gy] (α/β = 10)','EQD2 [Gy] (α/β = 3)')):
+            MetricTable.cell(self.prior_frame,0,col,title,HEADER,True)
+            self.prior_frame.columnconfigure(col,weight=3 if col==0 else 2)
         self.prior_vars=[tk.StringVar(),tk.StringVar()]
-        for i,text in enumerate(('Gy / Fx','fractions')):
-            entry=tk.Entry(self.prior_frame,textvariable=self.prior_vars[i],bg=BLUE,fg=INPUT_INK,justify='center',relief='flat',borderwidth=0,highlightthickness=1,highlightbackground='black',highlightcolor='black',font=('Arial',11),width=6)
-            entry.pack(side='left',ipady=2)
-            entry.bind('<Return>',self.edit_pending)
-            entry.bind('<FocusOut>',self.edit_pending)
-            tk.Label(self.prior_frame,text=text,bg=HEADER,fg=INK,font=('Arial',10)).pack(side='left',padx=(4,10))
-        self.prior_summary=tk.Label(self.prior_frame,text='',bg=HEADER,fg=INK,font=('Arial',10),anchor='e')
-        self.prior_summary.pack(side='right',fill='x',expand=True)
-        body=tk.PanedWindow(self.dashboard,orient='vertical',bg=BG,sashwidth=6,bd=0)
+        self.prior_display={}
+        for row,title in enumerate(('Dose per fraction [Gy]','Fractions without central shield','Total dose [Gy]'),1):
+            MetricTable.cell(self.prior_frame,row,0,title,'white')
+            for col in range(1,4):
+                if col==1 and row<3:
+                    entry=tk.Entry(self.prior_frame,textvariable=self.prior_vars[row-1],bg=BLUE,fg=INK,justify='center',relief='flat',borderwidth=0,font=('Arial',10),width=6)
+                    entry.grid(row=row,column=col,sticky='nsew',padx=1,pady=1)
+                    entry.bind('<Return>',self.edit_pending)
+                    entry.bind('<FocusOut>',self.edit_pending)
+                else:
+                    self.prior_display[row,col]=MetricTable.cell(self.prior_frame,row,col,'','white')
+        body=tk.PanedWindow(self.dashboard,orient='vertical',bg=FRAME,sashwidth=8,bd=0)
         body.pack(fill='both',expand=True,padx=12,pady=(0,3))
         self.tables=[]
         for title,definitions,target in [('TARGETS',STRUCTURES[:3],True),('ORGANS AT RISK',STRUCTURES[3:],False)]:
             table=MetricTable(body,self,title,definitions,target)
-            body.add(table,minsize=150,stretch='always')
+            body.add(table,minsize=230 if target else 160,stretch='always')
             self.tables.append(table)
         footer=tk.Frame(self.dashboard,bg=BG)
-        footer.pack(fill='x',padx=12,pady=(3,8))
-        ttk.Button(footer,text='Export Excel',command=self.export).pack(side='right',padx=(6,0))
-        ttk.Button(footer,text='Export PDF',command=self.export_report).pack(side='right',padx=(6,0))
-        ttk.Button(footer,text='Clear all',command=self.clear).pack(side='right',padx=(6,0))
-        tk.Label(footer,textvariable=self.status_text,bg=BG,fg=MUTED,font=('Arial',10),anchor='w',justify='left',wraplength=720).pack(side='left',fill='x',expand=True)
+        footer.pack(side='bottom',fill='x',padx=12,pady=(6,10),before=body)
+        ttk.Button(footer,text='Export Excel',command=self.export,width=14).pack(side='right',padx=(10,8),pady=8)
+        ttk.Button(footer,text='Export PDF',command=self.export_report,width=14).pack(side='right',padx=(10,0),pady=8)
+        ttk.Button(footer,text='Clear all',command=self.clear,width=10).pack(side='right',padx=(10,0),pady=8)
+        tk.Label(footer,textvariable=self.status_text,bg=BG,fg='#505b67',font=('Arial',10),anchor='w',justify='left',wraplength=480).pack(side='left',fill='x',expand=True,padx=8,pady=8)
         self.comparison=ComparisonTab(self.notebook,self)
         self.notebook.add(self.comparison,text='Plan comparison')
         self.notebook.bind('<<NotebookTabChanged>>',lambda e:self.commit_inputs())
         self.refresh()
-        self.after(100,lambda:body.sash_place(0,0,int(body.winfo_height()*.44)))
+        self.after(100,lambda:body.sash_place(0,0,int(body.winfo_height()*.58)))
 
     def label(self,text,size=11):
-        label=tk.Label(self.dashboard,text=text,bg=BG,fg=INK,anchor='w',justify='left',wraplength=1100,font=('Arial',size))
+        label=tk.Label(self.dashboard,text=text,bg=FRAME,fg='white',anchor='w',justify='left',wraplength=1100,font=('Arial',size))
         label.pack(fill='x',padx=12,pady=2)
         return label
+
+    def toggle_files(self):
+        if self.show_files.get():
+            self.files.pack(fill='x',padx=12,pady=2,before=self.prior_frame)
+        else:
+            self.files.pack_forget()
 
     def refresh(self):
         c=self.course
@@ -205,7 +223,9 @@ class App(tk.Tk):
         self.prior_vars[0].set(fmt(c.dose_per_fx))
         self.prior_vars[1].set(str(c.prior_fractions))
         self.prior_displayed=[v.get() for v in self.prior_vars]
-        self.prior_summary.configure(text=f'Total {fmt(c.dose_per_fx*c.prior_fractions)} Gy   |   EQD2₁₀ {fmt(c.baseline(10))}   |   EQD2₃ {fmt(c.baseline(3))} Gy')
+        for (row,col),label in self.prior_display.items():
+            value=(c.dose_per_fx*c.prior_fractions if col==1 else c.baseline(10 if col==2 else 3)) if row>=2 else None
+            label.configure(text=fmt(value))
         for fx,button in enumerate(self.buttons):
             button.configure(state='normal' if fx < c.count else 'disabled')
         for (key,fx),(var,entry) in self.inputs.items():
@@ -224,7 +244,7 @@ class App(tk.Tk):
                 k=f'{key}_{metric.key}'
                 for fx in range(5):
                     value=c.values[fx].get(k)
-                    self.cells[k,fx].configure(text=fmt(eqd2(value,metric.ab)) if value is not None and fx<c.count else '',bg='white' if fx<c.count else INACTIVE,fg=INPUT_INK if fx<c.count else MUTED)
+                    self.cells[k,fx].configure(text=fmt(eqd2(value,metric.ab)) if value is not None and fx<c.count else '',bg='#fafbfc' if fx<c.count else INACTIVE,fg=INPUT_INK if fx<c.count else MUTED)
                 total=c.total(k)
                 result=status(total,metric)
                 self.totals[k].configure(text=fmt(total),bg='white' if result=='neutral' else COLORS[result],fg=INPUT_INK)
@@ -352,11 +372,11 @@ def packaged_smoke_test(report_path):
             dose=app.inputs[key,0][1]
             eqd=app.cells[key,0]
             assert eqd.winfo_ismapped()
-            assert dose.cget('bg')==BLUE and eqd.cget('bg')=='white'
+            assert dose.cget('bg')==BLUE and eqd.cget('bg')=='#fafbfc'
             assert int(eqd.grid_info()['row'])==int(dose.grid_info()['row'])+1
             assert total.grid_info()['row']==eqd.grid_info()['row']
             labels=eqd.master.grid_slaves(row=int(eqd.grid_info()['row']),column=0)
-            assert labels[0].cget('bg')==SURFACE
+            assert labels[0].cget('bg')=='#fafbfc'
         app.inputs['ctvhr_D90',0][0].set('7.13')
         app.count.set('5 Fx')
         app.change_count()
