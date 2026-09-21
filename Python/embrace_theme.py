@@ -10,7 +10,7 @@ MUTED='#505b67'
 BLUE='#d9eff7'
 INPUT_INK='#17212b'
 INACTIVE='#eef0f2'
-COLORS={'neutral':SURFACE,'pass':'#cde7d2','warn':'#ffedb5','fail':'#f3c5c1'}
+COLORS={'neutral':SURFACE,'pass':'#73bf6e','warn':'#f5cc52','fail':'#e0574d'}
 
 
 def apply_theme(root):

@@ -345,3 +345,27 @@ class PlanComparison:
     def clear(self, slot):
         self.plans[slot] = None
         self.files[slot] = ''
+
+
+def best_metric_slots(values, metric):
+    """Compare defined constraints only; all preferred-goal matches tie.
+
+    None means no comparison (missing values, fewer than two plans or no rule).
+    This is a per-metric constraint comparison, not an overall plan ranking.
+    """
+    if len(values) < 2 or any(v is None for v in values.values()):
+        return None
+    rule = metric.goal or metric.hard
+    if not rule:
+        return None
+    def distance(value):
+        interval = re.fullmatch(r'([\d.]+)-([\d.]+)', rule)
+        if interval:
+            low, high = map(float, interval.groups())
+            return max(low-value, 0, value-high)
+        threshold = float(re.search(r'[\d.]+', rule)[0])
+        return max(threshold-value, 0) if rule.startswith('>') else max(value-threshold, 0)
+    scores = {slot: (0 if meets(number(value),rule) else 1, distance(number(value)))
+              for slot,value in values.items()}
+    best = min(scores.values())
+    return [slot for slot,score in scores.items() if score == best]

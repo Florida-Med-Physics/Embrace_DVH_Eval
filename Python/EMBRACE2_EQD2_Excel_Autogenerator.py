@@ -50,7 +50,7 @@ class MetricTable(tk.Frame):
         row=0
         for title,key,metrics in definitions:
             section=tk.Label(self.grid_frame,text=title,bg=HEADER,fg=INK,anchor='w',font=('Arial',10,'bold'),padx=7,pady=0)
-            section.grid(row=row,column=0,columnspan=9,sticky='nsew')
+            section.grid(row=row,column=0,columnspan=9,sticky='nsew',pady=(8 if row else 0,2))
             row+=1
             for metric in metrics:
                 k=f'{key}_{metric.key}'
@@ -236,7 +236,7 @@ class App(tk.Tk):
             label.configure(text=fmt(c.values[fx].get(key)),bg=SURFACE if fx < c.count else INACTIVE,fg=MUTED)
         for table in self.tables:
             for fx in range(5):
-                table.headings[fx+1].configure(fg=INK if fx < c.count else '#929ba4')
+                table.headings[fx+1].configure(fg=INK if fx < c.count else '#929ba4',bg=BLUE if fx<c.count else INACTIVE)
         for _,key,metrics in STRUCTURES:
             for metric in metrics:
                 if not metric.ab:

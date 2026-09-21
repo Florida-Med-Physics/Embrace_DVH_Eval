@@ -2,7 +2,7 @@
 from copy import deepcopy
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
-from embrace_core import PlanComparison, STRUCTURES, fmt, status, positive_dose
+from embrace_core import PlanComparison, STRUCTURES, fmt, status, positive_dose, best_metric_slots
 
 from embrace_import import import_with_volumes
 from embrace_theme import BG, SURFACE, ALT, HEADER, INK, MUTED, BLUE, INPUT_INK, COLORS
@@ -20,6 +20,7 @@ class ComparisonTab(tk.Frame):
         self.volumes={}
         self.physical={}
         self.headings=[]
+        self.best_cells={}
         top=tk.Frame(self,bg=FRAME)
         top.pack(fill='x',padx=12,pady=(12,10))
         tk.Label(top,text='EMBRACE-2  Plan Comparison',bg=FRAME,fg='white',font=('Arial',22,'bold')).pack(side='left')
@@ -80,7 +81,7 @@ class ComparisonTab(tk.Frame):
         win=self.canvas.create_window((0,0),window=self.grid_frame,anchor='nw')
         def resize(event):
             self.canvas.itemconfigure(win,width=event.width)
-            proportions=[260,145,145,145,145,115,115]
+            proportions=[240,130,130,130,130,100,110,185]
             widths=[int(event.width*w/sum(proportions)) for w in proportions]
             widths[0]+=event.width-sum(widths)
             for grid in (self.grid_frame,self.head_grid):
@@ -88,12 +89,12 @@ class ComparisonTab(tk.Frame):
                     grid.columnconfigure(col,minsize=width,weight=0)
         self.canvas.bind('<Configure>',resize)
         self.grid_frame.bind('<Configure>',lambda e:self.canvas.configure(scrollregion=self.canvas.bbox('all')))
-        for col,text in enumerate(['Structure / metric','Plan 1','Plan 2','Plan 3','Plan 4','Goal / soft','Tolerance / hard']):
+        for col,text in enumerate(['Structure / metric','Plan 1','Plan 2','Plan 3','Plan 4','Goal / soft','Tolerance / hard','Best vs goal']):
             self.headings.append(self.cell(self.head_grid,0,col,text,HEADER,True))
         row=0
         for title,key,metrics in STRUCTURES:
             header=tk.Label(self.grid_frame,text=title,bg=HEADER,fg=INK,font=('Arial',10,'bold'),anchor='w',padx=7,pady=0)
-            header.grid(row=row,column=0,columnspan=7,sticky='nsew')
+            header.grid(row=row,column=0,columnspan=8,sticky='nsew',pady=(8 if row else 0,2))
             row+=1
             for metric in metrics:
                 k=f'{key}_{metric.key}'
@@ -104,6 +105,8 @@ class ComparisonTab(tk.Frame):
                         self.physical[k,slot]=label
                     else:
                         self.volumes[k,slot]=label
+                for col in (5,6,7):
+                    self.cell(self.grid_frame,row,col,'','white')
                 row+=1
                 if metric.ab:
                     self.cell(self.grid_frame,row,0,f'  Total {metric.label.replace("[Gy]", "EQD2 [Gy]")}', '#fafbfc')
@@ -111,6 +114,7 @@ class ComparisonTab(tk.Frame):
                         self.results[k,slot]=self.cell(self.grid_frame,row,slot+1,'','white',True)
                     self.cell(self.grid_frame,row,5,metric.goal,'#fafbfc')
                     self.cell(self.grid_frame,row,6,metric.hard,'#fafbfc')
+                    self.best_cells[k]=self.cell(self.grid_frame,row,7,'—','white')
                     row+=1
         def bind_wheel(widget):
             def scroll(event):
@@ -123,7 +127,7 @@ class ComparisonTab(tk.Frame):
         bind_wheel(outer)
         footer=tk.Frame(self,bg=BG)
         footer.pack(fill='x',padx=12,pady=(3,8))
-        tk.Label(footer,text='Physical dose rows: one fraction. Total EQD2 rows: all fractions + prior RT.',bg=BG,fg='#505b67',font=('Arial',10)).pack(side='left')
+        tk.Label(footer,text='Best vs goal: per metric only; meeting the goal ties. No overall plan ranking.',bg=BG,fg='#505b67',font=('Arial',10)).pack(side='left')
         ttk.Button(footer,text='Export comparison PDF',command=self.export_report).pack(side='right')
 
     @staticmethod
@@ -157,7 +161,8 @@ class ComparisonTab(tk.Frame):
         first=next((p for p in self.model.plans if p),None)
         self.patient.configure(text=f'Patient: {first.patient or "—"} | ID: {first.patient_id or "—"}' if first else '')
         for slot,parsed in enumerate(self.model.plans):
-            self.names[slot].configure(text=f'{parsed.plan or "Unnamed plan"}\n{self.model.files[slot]}' if parsed else 'No DVH loaded')
+            self.names[slot].configure(text=self.model.files[slot] if parsed else 'No DVH loaded')
+            self.headings[slot+1].configure(text=f'Plan {slot+1}: {self.model.files[slot]}' if parsed else f'Plan {slot+1}',wraplength=130)
             scenario=self.model.scenario(slot,c)
             for _,key,metrics in STRUCTURES:
                 for metric in metrics:
@@ -169,6 +174,20 @@ class ComparisonTab(tk.Frame):
                         total=scenario.total(k) if scenario else None
                         result=status(total,metric)
                         self.results[k,slot].configure(text=fmt(total),bg='white' if result=='neutral' else COLORS[result],fg=INPUT_INK)
+
+
+        active={slot:self.model.scenario(slot,c) for slot,plan in enumerate(self.model.plans) if plan}
+        for _,key,metrics in STRUCTURES:
+            for metric in metrics:
+                if not metric.ab:
+                    continue
+                k=f'{key}_{metric.key}'
+                winners=best_metric_slots({slot:scenario.total(k) for slot,scenario in active.items()},metric)
+                label='No defined goal' if not (metric.goal or metric.hard) else 'Need 2 complete plans'
+                if winners is not None:
+                    label=('Tie: ' if len(winners)>1 else '')+', '.join(f'Plan {slot+1}' for slot in winners)
+                self.best_cells[k].configure(text=label)
+
 
     def load(self,slot):
         if not self.commit_prescription() or not self.app.commit_inputs():
