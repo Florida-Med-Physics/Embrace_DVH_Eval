@@ -17,8 +17,8 @@ UF_BLUE = colors.HexColor('#002169')
 UF_ORANGE = colors.HexColor('#fa4a00')
 INK = colors.HexColor('#17212b')
 GRAY = colors.HexColor('#e9ecef')
-STATUS = {'neutral': colors.white, 'pass': colors.HexColor('#d5ead8'),
-          'warn': colors.HexColor('#fff0bb'), 'fail': colors.HexColor('#f6d0cd')}
+STATUS = {'neutral': colors.white, 'pass': colors.HexColor('#73bf6e'),
+          'warn': colors.HexColor('#f5cc52'), 'fail': colors.HexColor('#e0574d')}
 
 
 def draw_letterhead(canvas):
@@ -39,80 +39,85 @@ def draw_letterhead(canvas):
 
 
 def export_pdf(course, output):
-    """Export the current course without changing its values or requiring Excel."""
-    output = Path(output)
+    """Print the dashboard data in the EMBRACE worksheet's column order."""
+    output=Path(output)
     if not any(v is not None for values in course.values[:course.count] for v in values.values()):
         raise ValueError('There are no brachytherapy fraction values to export.')
-    normal = ParagraphStyle('Body', fontName='Helvetica', fontSize=9, leading=12, textColor=INK)
-    small = ParagraphStyle('Small', parent=normal, fontSize=8, leading=10)
-    title = ParagraphStyle('Title', parent=normal, fontName='Helvetica-Bold', fontSize=16, leading=20, textColor=UF_BLUE)
-    section_style = ParagraphStyle('Section', parent=normal, fontName='Helvetica-Bold', fontSize=11, leading=14)
-    cell_style = ParagraphStyle('Cell', parent=small, fontSize=7.5, leading=9, alignment=1, textColor=colors.white)
-    def p(value, style=normal):
-        return Paragraph(escape(str(value)), style)
-
-    story = []
-    for page, (heading, definitions) in enumerate((('TARGETS', STRUCTURES[:3]), ('ORGANS AT RISK', STRUCTURES[3:]))):
-        if page:
-            story.append(PageBreak())
-        story += [p('EMBRACE-2 | EQD2 report', title), Spacer(1,5),
-                  p(f'Patient: {course.patient or "Not specified"}    |    Patient ID: {course.patient_id or "Not specified"}'),
-                  p(f'Prescription: {fmt(course.prescription_gy)} Gy x {course.count} fractions | BT EQD2 (a/b 10): {fmt(course.prescription_eqd2())} Gy'),
-                  p(f'Prior RT: {fmt(course.dose_per_fx)} Gy x {course.prior_fractions} fractions = {fmt(course.dose_per_fx*course.prior_fractions)} Gy'),
-                  p(f'Prior RT EQD2: {fmt(course.baseline(10))} Gy (a/b = 10)    |    {fmt(course.baseline(3))} Gy (a/b = 3)'),
-                  Spacer(1,10), p(heading,section_style), Spacer(1,5)]
-        goals = ('Planning goal','Tolerance') if page == 0 else ('Soft constraint','Hard constraint')
-        headers = ['Structure / metric']+[f'Fx {i+1}' for i in range(course.count)]+['BT + EBRT\nEQD2 [Gy]',*goals]
-        rows = [[p(h.replace('\n',' '),cell_style) for h in headers]]
-        widths = [148]+[38]*course.count+[72,65,65]
-        # Use the full printable width, allocating extra room to the metric label.
-        widths[0] += 528-sum(widths)
-        commands = [('FONTNAME',(0,0),(-1,-1),'Helvetica'), ('FONTSIZE',(0,0),(-1,-1),8),
-                    ('TEXTCOLOR',(0,0),(-1,-1),INK), ('VALIGN',(0,0),(-1,-1),'MIDDLE'),
-                    ('ALIGN',(1,0),(-1,-1),'CENTER'), ('BACKGROUND',(0,0),(-1,0),UF_BLUE),
-                    ('TOPPADDING',(0,0),(-1,-1),3), ('BOTTOMPADDING',(0,0),(-1,-1),3),
-                    ('LINEBELOW',(0,0),(-1,0),.6,colors.HexColor('#b8c0c7'))]
+    normal=ParagraphStyle('Worksheet',fontName='Helvetica',fontSize=8,leading=10,textColor=INK)
+    head=ParagraphStyle('WorksheetHeader',parent=normal,fontName='Helvetica-Bold',alignment=1)
+    small=ParagraphStyle('WorksheetSmall',parent=normal,fontSize=7,leading=9)
+    title=ParagraphStyle('WorksheetTitle',parent=normal,fontName='Helvetica-Bold',fontSize=13,leading=16)
+    blue=colors.HexColor('#d9eff7')
+    band=colors.HexColor('#e6e9ed')
+    def p(value,style=normal):
+        return Paragraph(escape(str(value)).replace('\n','<br/>'),style)
+    def style_table(table,extra=()):
+        table.setStyle(TableStyle([
+            ('FONTNAME',(0,0),(-1,-1),'Helvetica'),('FONTSIZE',(0,0),(-1,-1),8),
+            ('VALIGN',(0,0),(-1,-1),'MIDDLE'),('ALIGN',(1,0),(-1,-1),'CENTER'),
+            ('TOPPADDING',(0,0),(-1,-1),2),('BOTTOMPADDING',(0,0),(-1,-1),2),
+            ('LEFTPADDING',(0,0),(-1,-1),5),('RIGHTPADDING',(0,0),(-1,-1),5),
+            ('GRID',(0,0),(-1,-1),.3,colors.HexColor('#b8c0c7')),
+            ('BACKGROUND',(0,0),(-1,0),band),('FONTNAME',(0,0),(-1,0),'Helvetica-Bold'),
+        ]+list(extra)))
+        return table
+    story=[]
+    for page,(heading,definitions) in enumerate((('TARGETS',STRUCTURES[:3]),('ORGANS AT RISK',STRUCTURES[3:]))):
+        if page: story.append(PageBreak())
+        story += [p('EMBRACE-2 | PHYSICAL - BIOLOGICAL DOCUMENTATION OF HDR BT',title),Spacer(1,5),
+                  p(f'PATIENT: {course.patient or "Not specified"}    |    ID: {course.patient_id or "Not specified"}'),
+                  p(f'BRACHYTHERAPY: {fmt(course.prescription_gy)} Gy x {course.count} fractions    |    Prescription BT EQD2 (a/b 10): {fmt(course.prescription_eqd2())} Gy'),Spacer(1,7)]
+        prior=[['EXTERNAL BEAM THERAPY','Value','TUMOUR EQD2 [Gy]\n(a/b = 10)','OAR EQD2 [Gy]\n(a/b = 3)'],
+               ['Dose per fraction [Gy]',fmt(course.dose_per_fx),'',''],
+               ['Fractions without central shield',str(course.prior_fractions),fmt(course.baseline(10)),fmt(course.baseline(3))],
+               ['Total dose [Gy]',fmt(course.dose_per_fx*course.prior_fractions),fmt(course.baseline(10)),fmt(course.baseline(3))]]
+        prior[0]=[p(v,head) for v in prior[0]]
+        if page==0:
+            story += [style_table(Table(prior,colWidths=[300,100,160,160]),[('BACKGROUND',(1,1),(1,2),blue)]),Spacer(1,8)]
+        else:
+            story += [p(f'EXTERNAL BEAM THERAPY: {fmt(course.dose_per_fx)} Gy x {course.prior_fractions} | EQD2 tumour: {fmt(course.baseline(10))} Gy | EQD2 OAR: {fmt(course.baseline(3))} Gy'),Spacer(1,8)]
+        goals=('Planning goal','Tolerance') if page==0 else ('Soft constraint','Hard constraint')
+        n=course.count
+        widths=[720-(48*n+65+75+70+70)]+[48]*n+[65,75,70,70]
+        labels=['Structure / dose parameter']+[f'F {i+1}' for i in range(n)]+['TOTAL BT\nEQD2 [Gy]','BT + EBRT\nEQD2 [Gy]',*goals]
+        rows=[[p(v,head) for v in labels]]
+        commands=[]
+        # Fractions retain their source plan names within the worksheet header.
+        rows.append(['Plan / source']+[p(course.files[i] or course.plans[i] or 'Manual',small) for i in range(n)]+['']*4)
         for name,key,metrics in definitions:
             r=len(rows)
-            rows.append([name]+['']*(course.count+3))
-            commands += [('SPAN',(0,r),(-1,r)),('BACKGROUND',(0,r),(-1,r),GRAY),
-                         ('FONTNAME',(0,r),(-1,r),'Helvetica-Bold'),('TEXTCOLOR',(0,r),(-1,r),UF_BLUE), ('NOSPLIT',(0,r),(-1,r+1))]
+            rows.append([name]+['']*(n+4))
+            commands += [('SPAN',(0,r),(-1,r)),('BACKGROUND',(0,r),(-1,r),band),
+                         ('FONTNAME',(0,r),(-1,r),'Helvetica-Bold'),('LINEABOVE',(0,r),(-1,r),1,INK),
+                         ('TOPPADDING',(0,r),(-1,r),4),('NOSPLIT',(0,r),(-1,r+1))]
             for metric in metrics:
                 k=f'{key}_{metric.key}'
-                rows.append([metric.label]+[fmt(course.values[fx].get(k)) for fx in range(course.count)]+['','',''])
+                r=len(rows)
+                rows.append([metric.label]+[fmt(course.values[i].get(k)) for i in range(n)]+['']*4)
                 if metric.ab:
-                    rows.append([metric.label.replace('[Gy]',f'EQD2 (a/b {metric.ab}) [Gy]')]+
-                                [fmt(eqd2(course.values[fx][k],metric.ab)) if course.values[fx].get(k) is not None else '' for fx in range(course.count)]+
-                                [fmt(course.total(k)),metric.goal,metric.hard])
+                    commands += [('BACKGROUND',(1,r),(n,r),blue),('NOSPLIT',(0,r),(-1,r+1))]
+                    values=[eqd2(course.values[i][k],metric.ab) if course.values[i].get(k) is not None else None for i in range(n)]
+                    bt=sum(v for v in values if v is not None) if any(v is not None for v in values) else None
+                    rows.append([metric.label.replace('[Gy]',f'EQD2{metric.ab} [Gy]')]+[fmt(v) for v in values]+[fmt(bt),fmt(course.total(k)),metric.goal,metric.hard])
                     r=len(rows)-1
-                    commands += [('BACKGROUND',(course.count+1,r),(course.count+1,r),STATUS[status(course.total(k),metric)]),
-                                 ('FONTNAME',(course.count+1,r),(course.count+1,r),'Helvetica-Bold'),
-                                 ('LINEBELOW',(0,r),(-1,r),.2,colors.HexColor('#e3e6e9'))]
-        table=Table(rows,colWidths=widths,repeatRows=1,hAlign='LEFT')
-        table.setStyle(TableStyle(commands+[('GRID',(0,0),(-1,-1),.25,colors.black)]))
-        story += [table,Spacer(1,7),p('Green: goal met | Yellow: tolerance met | Red: tolerance exceeded or not met',small),
-                  p('Blank metrics are not included. Absolute doses stay unchanged; % doses use prescription. Values display one decimal.',small)]
-        if page == 1:
-            story += [Spacer(1,9),p('FRACTION SOURCES',section_style)]
-            for fx in range(course.count):
-                story.append(p(f'Fx {fx+1} | Plan: {course.plans[fx] or "Not specified"} | {course.files[fx] or "Manual / not loaded"}',small))
+                    commands += [('BACKGROUND',(n+2,r),(n+2,r),STATUS[status(course.total(k),metric)]),('FONTNAME',(n+1,r),(n+2,r),'Helvetica-Bold')]
+        section=Table([[heading]],colWidths=[720])
+        section.setStyle(TableStyle([('BACKGROUND',(0,0),(-1,-1),INK),('TEXTCOLOR',(0,0),(-1,-1),colors.white),('FONTNAME',(0,0),(-1,-1),'Helvetica-Bold'),('FONTSIZE',(0,0),(-1,-1),10),('TOPPADDING',(0,0),(-1,-1),4),('BOTTOMPADDING',(0,0),(-1,-1),4)]))
+        story += [section,style_table(Table(rows,colWidths=widths,repeatRows=2,hAlign='LEFT'),commands)]
     timestamp=datetime.now().strftime('%Y-%m-%d %H:%M')
-    def footer(canvas, doc):
-        draw_letterhead(canvas)
-        canvas.setFont('Helvetica',8)
+    def footer(canvas,doc):
+        canvas.setFont('Helvetica',7)
         canvas.setFillColor(INK)
-        canvas.drawString(42,22,f'UFHPTI | EQD2 | Exported {timestamp}')
-        canvas.drawRightString(570,22,f'Page {doc.page}')
+        canvas.drawString(36,18,f'UFHPTI | EMBRACE EQD2 | {timestamp}')
+        canvas.drawRightString(756,18,f'Page {doc.page}')
     fd,temp=tempfile.mkstemp(suffix='.pdf',dir=output.parent)
     os.close(fd)
     try:
-        doc=SimpleDocTemplate(temp,pagesize=letter,leftMargin=36,rightMargin=36,topMargin=68,bottomMargin=36,
-                              title='EMBRACE-2 EQD2 report',author='EMBRACE EQD2')
+        doc=SimpleDocTemplate(temp,pagesize=(792,612),leftMargin=30,rightMargin=30,topMargin=24,bottomMargin=30,title='EMBRACE-2 EQD2 worksheet',author='EMBRACE EQD2')
         doc.build(story,onFirstPage=footer,onLaterPages=footer)
         os.replace(temp,output)
     finally:
-        if os.path.exists(temp):
-            os.unlink(temp)
+        if os.path.exists(temp): os.unlink(temp)
 
 
 def export_comparison_pdf(comparison, course, output):
@@ -165,7 +170,6 @@ def export_comparison_pdf(comparison, course, output):
         table=Table(rows,colWidths=[144,62,62,62,62,62,74],repeatRows=1,hAlign='LEFT')
         table.setStyle(TableStyle(commands+[('GRID',(0,0),(-1,-1),.25,colors.black)]))
         story += [table,Spacer(1,7),p('Physical dose rows: one fraction. Total EQD2 rows: all fractions + prior RT.',small),
-                  p('Green: goal met | Yellow: tolerance met | Red: tolerance exceeded or not met',small),
                   p('Blank metrics are not included. Absolute doses stay unchanged; % doses use prescription. Values display one decimal.',small)]
     timestamp=datetime.now().strftime('%Y-%m-%d %H:%M')
     def footer(canvas,doc):
