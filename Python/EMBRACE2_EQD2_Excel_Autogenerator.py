@@ -160,6 +160,29 @@ class App(tk.Tk):
         tk.Label(self.rx_frame,text='Gy / Fx  ×',bg=BG,fg=INK,font=('Arial',10)).pack(side='left',padx=(5,12))
         self.rx_summary=tk.Label(self.rx_frame,bg=BG,fg=INK,font=('Arial',10))
         self.rx_summary.pack(side='left')
+        modality_frame=tk.Frame(self.dashboard,bg=BG,padx=4,pady=3)
+        modality_frame.pack(fill='x',padx=12,pady=2)
+        tk.Label(modality_frame,text='Imaging',bg=BG,fg=INK).pack(side='left',padx=(0,8))
+        self.modality_vars=[]
+        self.modality_boxes=[]
+        for fx in range(5):
+            tk.Label(modality_frame,text=f'Fx {fx+1}',bg=BG,fg=INK).pack(side='left',padx=(8,3))
+            var=tk.StringVar()
+            box=ttk.Combobox(modality_frame,textvariable=var,values=['','MR','CT','MR + CT'],state='readonly',width=7)
+            box.pack(side='left')
+            box.bind('<<ComboboxSelected>>',lambda e,i=fx:self.set_modality(i))
+            self.modality_vars.append(var); self.modality_boxes.append(box)
+        attachments=tk.Frame(self.dashboard,bg=BG,padx=4,pady=3)
+        attachments.pack(fill='x',padx=12,pady=2)
+        tk.Label(attachments,text='PDF images for',bg=BG,fg=INK).pack(side='left')
+        self.image_fx=tk.StringVar(value='Fx 1')
+        self.image_fx_box=ttk.Combobox(attachments,textvariable=self.image_fx,state='readonly',width=5)
+        self.image_fx_box.pack(side='left',padx=5)
+        ttk.Button(attachments,text='Attach screenshot',command=lambda:self.add_screenshot(False)).pack(side='left',padx=3)
+        ttk.Button(attachments,text='Capture monitor',command=lambda:self.add_screenshot(True)).pack(side='left',padx=3)
+        ttk.Button(attachments,text='Remove image',command=self.remove_screenshot).pack(side='left',padx=3)
+        self.image_status=tk.Label(attachments,text='',bg=BG,fg=INK)
+        self.image_status.pack(side='left',padx=6)
         self.plans=self.label('',10)
         self.show_files=tk.BooleanVar(value=True)
         self.files=tk.Label(self.dashboard,text='',bg=FRAME,fg='white',anchor='w',justify='left',wraplength=1160,font=('Arial',9))
@@ -214,6 +237,13 @@ class App(tk.Tk):
 
     def refresh(self):
         c=self.course
+        for fx,box in enumerate(self.modality_boxes):
+            self.modality_vars[fx].set(c.modalities[fx])
+            box.configure(state='readonly' if fx<c.count else 'disabled')
+        self.image_fx_box.configure(values=[f'Fx {i+1}' for i in range(c.count)])
+        if int(self.image_fx.get().split()[-1])>c.count: self.image_fx.set('Fx 1')
+        attached=[str(i+1) for i,v in enumerate(c.screenshots[:c.count]) if v]
+        self.image_status.configure(text='Attached: Fx '+', '.join(attached) if attached else 'No screenshots attached')
         self.prescription_var.set(fmt(c.prescription_gy))
         self.prescription_displayed=self.prescription_var.get()
         self.rx_summary.configure(text=f'{c.count} x {fmt(c.prescription_gy)} Gy = {fmt(c.count*c.prescription_gy)} Gy  |  Prescription BT EQD2₁₀: {fmt(c.prescription_eqd2())} Gy')
@@ -336,6 +366,23 @@ class App(tk.Tk):
             self.status_text.set(f'Exported {Path(output).name}. Open in Excel to recalculate formulas.')
         except Exception as error:
             messagebox.showerror('Excel Export Error',str(error),parent=self)
+
+    def set_modality(self,fx):
+        self.course.modalities[fx]=self.modality_vars[fx].get()
+
+    def add_screenshot(self,capture):
+        if not self.commit_inputs(): return
+        from embrace_attachments import choose_image,capture_monitor
+        fx=int(self.image_fx.get().split()[-1])-1
+        def accept(data):
+            self.course.screenshots[fx]=data
+            self.refresh()
+        (capture_monitor if capture else choose_image)(self,accept)
+
+    def remove_screenshot(self):
+        if not self.commit_inputs(): return
+        self.course.screenshots[int(self.image_fx.get().split()[-1])-1]=None
+        self.refresh()
 
     def export_report(self):
         if not self.commit_inputs():

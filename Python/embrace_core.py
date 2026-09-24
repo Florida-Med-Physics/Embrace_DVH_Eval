@@ -115,6 +115,7 @@ class DVH:
     relative_doses: dict = field(default_factory=dict)
     dose_unit: str = 'Gy'
     volume_unit: str = 'cc'
+    curves: dict = field(default_factory=dict)
 
     def metrics_at_prescription(self, prescription):
         result = self.metrics.copy()
@@ -159,6 +160,7 @@ def parse_dvh(path, prescription_gy=None, volumes_cc=None):
     if len(parts) == 1:
         raise ValueError('No ROI sections were found.')
     metrics, ratios, ignored, missing = {}, {}, [], []
+    curves = {}
     for name, body in zip(parts[1::2], parts[2::2]):
         name = name.strip()
         key = structure_key(name)
@@ -188,6 +190,8 @@ def parse_dvh(path, prescription_gy=None, volumes_cc=None):
         # prescription always use the original ratios, avoiding scaling drift.
         scale = .01 if dose_unit in ('cgy','%') else 1
         rows = [(d*scale,v) for d,v in rows]
+        if total > 0:
+            curves[key] = {'name':name, 'rows':sorted(rows), 'total_cc':total, 'relative':dose_unit=='%'}
         for _,structure,definitions in STRUCTURES:
             if structure != key:
                 continue
@@ -206,7 +210,7 @@ def parse_dvh(path, prescription_gy=None, volumes_cc=None):
         raise MissingVolumeError(missing)
     if not metrics:
         raise ValueError('No recognized EMBRACE-2 structures with numeric DVH data were found.')
-    return DVH(header('Patient'),header('Patient Id'),header('Plan'),metrics,ignored,ratios,dose_unit,volume_unit)
+    return DVH(header('Patient'),header('Patient Id'),header('Plan'),metrics,ignored,ratios,dose_unit,volume_unit,curves)
 
 
 @dataclass
@@ -221,6 +225,9 @@ class Course:
     files: list = field(default_factory=lambda: ['']*5)
     plans: list = field(default_factory=lambda: ['']*5)
     explicit: list = field(default_factory=lambda: [False]*5)
+    modalities: list = field(default_factory=lambda: ['']*5)
+    dvhs: list = field(default_factory=lambda: [None]*5)
+    screenshots: list = field(default_factory=lambda: [None]*5)
     relative_doses: list = field(default_factory=lambda: [{} for _ in range(5)])
 
     def set_prescription(self, dose):
@@ -278,6 +285,9 @@ class Course:
                 self.relative_doses[fx] = {}
                 self.files[fx] = self.plans[fx] = ''
                 self.explicit[fx] = False
+                self.modalities[fx] = ''
+                self.dvhs[fx] = None
+                self.screenshots[fx] = None
         elif count > old:
             sources = [i for i in range(old) if self.explicit[i]]
             if sources:
@@ -296,6 +306,8 @@ class Course:
         self.patient = self.patient or parsed.patient
         self.patient_id = self.patient_id or parsed.patient_id
         self.explicit[fx] = True
+        self.dvhs[fx] = parsed
+        self.screenshots[fx] = None
         for dest in range(fx, self.count):
             if dest == fx or not self.explicit[dest]:
                 # MATLAB preserves existing metrics absent from the new file.
