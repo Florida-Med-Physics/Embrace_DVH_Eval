@@ -165,13 +165,25 @@ class App(tk.Tk):
         tk.Label(modality_frame,text='Imaging',bg=BG,fg=INK).pack(side='left',padx=(0,8))
         self.modality_vars=[]
         self.modality_boxes=[]
+        self.imaging_date_vars=[]
+        self.imaging_date_entries=[]
         for fx in range(5):
             tk.Label(modality_frame,text=f'Fx {fx+1}',bg=BG,fg=INK).pack(side='left',padx=(8,3))
             var=tk.StringVar()
-            box=ttk.Combobox(modality_frame,textvariable=var,values=['','MR','CT','MR + CT'],state='readonly',width=7)
+            box=ttk.Combobox(modality_frame,textvariable=var,values=['','MRI','CT','MRI + CT'],state='readonly',width=7)
             box.pack(side='left')
             box.bind('<<ComboboxSelected>>',lambda e,i=fx:self.set_modality(i))
             self.modality_vars.append(var); self.modality_boxes.append(box)
+        date_frame=tk.Frame(self.dashboard,bg=BG,padx=4,pady=2)
+        date_frame.pack(fill='x',padx=12,pady=2)
+        tk.Label(date_frame,text='Imaging date (YYYY-MM-DD)',bg=BG,fg=INK).pack(side='left')
+        for fx in range(5):
+            tk.Label(date_frame,text=f'Fx {fx+1}',bg=BG,fg=INK).pack(side='left',padx=(6,2))
+            var=tk.StringVar()
+            entry=tk.Entry(date_frame,textvariable=var,width=10,font=('Arial',10))
+            entry.pack(side='left')
+            entry.bind('<Return>',self.edit_pending); entry.bind('<FocusOut>',self.edit_pending)
+            self.imaging_date_vars.append(var); self.imaging_date_entries.append(entry)
         attachments=tk.Frame(self.dashboard,bg=BG,padx=4,pady=3)
         attachments.pack(fill='x',padx=12,pady=2)
         tk.Label(attachments,text='PDF images for',bg=BG,fg=INK).pack(side='left')
@@ -239,6 +251,8 @@ class App(tk.Tk):
         c=self.course
         for fx,box in enumerate(self.modality_boxes):
             self.modality_vars[fx].set(c.modalities[fx])
+            self.imaging_date_vars[fx].set(c.imaging_dates[fx])
+            self.imaging_date_entries[fx].configure(state='normal' if fx<c.count else 'disabled')
             box.configure(state='readonly' if fx<c.count else 'disabled')
         self.image_fx_box.configure(values=[f'Fx {i+1}' for i in range(c.count)])
         if int(self.image_fx.get().split()[-1])>c.count: self.image_fx.set('Fx 1')
@@ -289,6 +303,15 @@ class App(tk.Tk):
         self._committing=True
         try:
             updated=deepcopy(self.course)
+            from datetime import date
+            for fx in range(updated.count):
+                value=self.imaging_date_vars[fx].get().strip()
+                if value:
+                    try:
+                        if date.fromisoformat(value).isoformat()!=value: raise ValueError()
+                    except ValueError:
+                        raise ValueError(f'Fx {fx+1}: enter imaging date as YYYY-MM-DD.')
+                updated.imaging_dates[fx]=value
             if self.prescription_var.get()!=self.prescription_displayed:
                 updated.set_prescription(self.prescription_var.get())
             for (key,fx),(var,_) in self.inputs.items():
@@ -387,7 +410,18 @@ class App(tk.Tk):
     def export_report(self):
         if not self.commit_inputs():
             return
-        output=filedialog.asksaveasfilename(title='Export PDF report',initialfile='EMBRACE2_EQD2_Report.pdf',defaultextension='.pdf',filetypes=[('PDF report','*.pdf')])
+        missing=[]
+        for fx in range(self.course.count):
+            if not self.course.explicit[fx]: continue
+            absent=[]
+            if not self.course.modalities[fx]: absent.append('MRI/CT')
+            if not self.course.imaging_dates[fx]: absent.append('imaging date')
+            if not self.course.dvhs[fx] or not self.course.dvhs[fx].curves: absent.append('DVH curves (reload TXT)')
+            if not self.course.screenshots[fx]: absent.append('Oncentra screenshot (Capture monitor or Attach screenshot)')
+            if absent: missing.append(f'Fx {fx+1}: '+', '.join(absent))
+        if missing and not messagebox.askyesno('Missing report details','The following items are missing:\n\n'+'\n'.join(missing)+'\n\nExport without these items? Choose No to add them first.',default='no',parent=self):
+            return
+        output=filedialog.asksaveasfilename(title='Export PDF report' ,initialfile='EMBRACE2_EQD2_Report.pdf',defaultextension='.pdf',filetypes=[('PDF report','*.pdf')])
         if not output:
             return
         try:

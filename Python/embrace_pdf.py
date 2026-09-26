@@ -21,6 +21,17 @@ STATUS = {'neutral': colors.white, 'pass': colors.HexColor('#73bf6e'),
           'warn': colors.HexColor('#f5cc52'), 'fail': colors.HexColor('#e0574d')}
 
 
+def draw_trial_reference(canvas, width):
+    canvas.saveState()
+    canvas.setFillColor(INK)
+    canvas.setFont('Helvetica',6)
+    canvas.drawString(36,39,'Reference: Pötter R, Tanderup K, Kirisits C, et al. The EMBRACE II study: The outcome and prospect of two decades')
+    canvas.drawString(36,31,'of evolution within the GEC-ESTRO GYN working group and the EMBRACE studies. Clin Transl Radiat Oncol. 2018;9:48-60.')
+    canvas.drawString(36,23,'doi:10.1016/j.ctro.2018.01.001')
+    canvas.linkURL('https://doi.org/10.1016/j.ctro.2018.01.001',(36,21,210,30),relative=0)
+    canvas.restoreState()
+
+
 def draw_letterhead(canvas):
     """Text-based UFHPTI treatment pending a supplied institutional template."""
     canvas.saveState()
@@ -55,7 +66,7 @@ def export_pdf(course, output):
         table.setStyle(TableStyle([
             ('FONTNAME',(0,0),(-1,-1),'Helvetica'),('FONTSIZE',(0,0),(-1,-1),8),
             ('VALIGN',(0,0),(-1,-1),'MIDDLE'),('ALIGN',(1,0),(-1,-1),'CENTER'),
-            ('TOPPADDING',(0,0),(-1,-1),1),('BOTTOMPADDING',(0,0),(-1,-1),1),
+            ('TOPPADDING',(0,0),(-1,-1),.5),('BOTTOMPADDING',(0,0),(-1,-1),.5),
             ('LEFTPADDING',(0,0),(-1,-1),5),('RIGHTPADDING',(0,0),(-1,-1),5),
             ('GRID',(0,0),(-1,-1),.3,colors.HexColor('#b8c0c7')),
             ('BACKGROUND',(0,0),(-1,0),band),('FONTNAME',(0,0),(-1,0),'Helvetica-Bold'),
@@ -83,7 +94,8 @@ def export_pdf(course, output):
         rows=[[p(v,head) for v in labels]]
         commands=[]
         # Fractions retain their source plan names within the worksheet header.
-        rows.append(['MR / CT']+[p(course.modalities[i] or 'Not set',small) for i in range(n)]+['']*4)
+        rows.append(['Imaging date']+[p(course.imaging_dates[i] or 'Not set',small) for i in range(n)]+['']*4)
+        rows.append(['MRI / CT']+[p(course.modalities[i] or 'Not set',small) for i in range(n)]+['']*4)
         rows.append(['Plan / source']+[p(course.files[i] or course.plans[i] or 'Manual',small) for i in range(n)]+['']*4)
         for name,key,metrics in definitions:
             r=len(rows)
@@ -104,19 +116,20 @@ def export_pdf(course, output):
                     commands += [('BACKGROUND',(n+2,r),(n+2,r),STATUS[status(course.total(k),metric)]),('FONTNAME',(n+1,r),(n+2,r),'Helvetica-Bold')]
         section=Table([[heading]],colWidths=[720])
         section.setStyle(TableStyle([('BACKGROUND',(0,0),(-1,-1),INK),('TEXTCOLOR',(0,0),(-1,-1),colors.white),('FONTNAME',(0,0),(-1,-1),'Helvetica-Bold'),('FONTSIZE',(0,0),(-1,-1),10),('TOPPADDING',(0,0),(-1,-1),4),('BOTTOMPADDING',(0,0),(-1,-1),4)]))
-        story += [section,style_table(Table(rows,colWidths=widths,repeatRows=3,hAlign='LEFT'),commands)]
+        story += [section,style_table(Table(rows,colWidths=widths,repeatRows=4,hAlign='LEFT'),commands)]
     from embrace_dvh_report import appendix
     story.extend(appendix(course))
     timestamp=datetime.now().strftime('%Y-%m-%d %H:%M')
     def footer(canvas,doc):
         canvas.setFont('Helvetica',7)
         canvas.setFillColor(INK)
-        canvas.drawString(36,18,f'UFHPTI | EMBRACE EQD2 | {timestamp}')
-        canvas.drawRightString(756,18,f'Page {doc.page}')
+        draw_trial_reference(canvas,792)
+        canvas.drawString(36,10,f'UFHPTI | EMBRACE EQD2 | {timestamp}')
+        canvas.drawRightString(756,10,f'Page {doc.page}')
     fd,temp=tempfile.mkstemp(suffix='.pdf',dir=output.parent)
     os.close(fd)
     try:
-        doc=SimpleDocTemplate(temp,pagesize=(792,612),leftMargin=30,rightMargin=30,topMargin=24,bottomMargin=30,title='EMBRACE-2 EQD2 worksheet',author='EMBRACE EQD2')
+        doc=SimpleDocTemplate(temp,pagesize=(792,612),leftMargin=30,rightMargin=30,topMargin=18,bottomMargin=48,title='EMBRACE-2 EQD2 worksheet',author='EMBRACE EQD2')
         doc.build(story,onFirstPage=footer,onLaterPages=footer)
         os.replace(temp,output)
     finally:
@@ -178,12 +191,13 @@ def export_comparison_pdf(comparison, course, output):
     def footer(canvas,doc):
         draw_letterhead(canvas)
         canvas.setFont('Helvetica',8)
-        canvas.drawString(42,22,f'UFHPTI | Plan comparison | Exported {timestamp}')
-        canvas.drawRightString(570,22,f'Page {doc.page}')
+        draw_trial_reference(canvas,612)
+        canvas.drawString(42,10,f'UFHPTI | Plan comparison | Exported {timestamp}')
+        canvas.drawRightString(570,10,f'Page {doc.page}')
     fd,temp=tempfile.mkstemp(suffix='.pdf',dir=output.parent)
     os.close(fd)
     try:
-        doc=SimpleDocTemplate(temp,pagesize=letter,leftMargin=36,rightMargin=36,topMargin=68,bottomMargin=36,title='EMBRACE-2 Plan Comparison',author='EMBRACE EQD2')
+        doc=SimpleDocTemplate(temp,pagesize=letter,leftMargin=36,rightMargin=36,topMargin=68,bottomMargin=48,title='EMBRACE-2 Plan Comparison',author='EMBRACE EQD2')
         doc.build(story,onFirstPage=footer,onLaterPages=footer)
         os.replace(temp,output)
     finally:

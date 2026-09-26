@@ -25,7 +25,7 @@ class ReportDetailsTests(unittest.TestCase):
             path=Path(tmp)/'synthetic.txt';path.write_text('Dose [Gy]\nCumulative mode\nROI: Bladder\n0 10\n5 2\n10 0\n')
             c=Course();c.load(0,path)
             self.assertIsNotNone(c.dvhs[0]);self.assertIsNone(c.dvhs[1])
-            c.modalities[3]='CT';c.screenshots[3]=b'image';c.dvhs[3]=c.dvhs[0]
+            c.imaging_dates[3]='2026-09-25';c.modalities[3]='CT';c.screenshots[3]=b'image';c.dvhs[3]=c.dvhs[0]
             c.set_count(3)
-            self.assertEqual(c.modalities[3],'');self.assertIsNone(c.screenshots[3]);self.assertIsNone(c.dvhs[3])
+            self.assertEqual(c.imaging_dates[3],'');self.assertEqual(c.modalities[3],'');self.assertIsNone(c.screenshots[3]);self.assertIsNone(c.dvhs[3])
             c.screenshots[0]=b'image';c.load(0,path);self.assertIsNone(c.screenshots[0])

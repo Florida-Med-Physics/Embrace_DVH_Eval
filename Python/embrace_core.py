@@ -226,6 +226,7 @@ class Course:
     plans: list = field(default_factory=lambda: ['']*5)
     explicit: list = field(default_factory=lambda: [False]*5)
     modalities: list = field(default_factory=lambda: ['']*5)
+    imaging_dates: list = field(default_factory=lambda: ['']*5)
     dvhs: list = field(default_factory=lambda: [None]*5)
     screenshots: list = field(default_factory=lambda: [None]*5)
     relative_doses: list = field(default_factory=lambda: [{} for _ in range(5)])
@@ -286,6 +287,7 @@ class Course:
                 self.files[fx] = self.plans[fx] = ''
                 self.explicit[fx] = False
                 self.modalities[fx] = ''
+                self.imaging_dates[fx] = ''
                 self.dvhs[fx] = None
                 self.screenshots[fx] = None
         elif count > old:

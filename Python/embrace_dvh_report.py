@@ -71,7 +71,7 @@ def appendix(course):
     for fx in range(course.count):
         parsed=course.dvhs[fx]
         modality=course.modalities[fx] or 'Not specified'
-        context=f'Patient: {course.patient or "Not specified"} | ID: {course.patient_id or "Not specified"} | Fx {fx+1} | Imaging: {modality}'
+        context=f'Patient: {course.patient or "Not specified"} | ID: {course.patient_id or "Not specified"} | Fx {fx+1} | Imaging: {modality} | Date: {course.imaging_dates[fx] or "Not specified"}'
         screenshot=course.screenshots[fx]
         if screenshot:
             story += [PageBreak(),p(f'ONCENTRA / ISODOSE - FRACTION {fx+1}'),p(context),Spacer(1,12)]
