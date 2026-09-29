@@ -5,6 +5,8 @@ No GUI or third-party dependencies. Fractions use zero-based indexes internally.
 from dataclasses import dataclass, field
 from pathlib import Path
 import math
+import os
+from datetime import datetime
 import re
 
 
@@ -73,12 +75,37 @@ def status(value, metric):
     return 'fail'
 
 
+ROI_ALIASES = {
+    'gtvres': ('gtvres','resgtv','residualgtv','gtvresidual','residualgrosstumorvolume'),
+    'ctvhr': ('ctvhr','hrctv','highriskctv','ctvhighrisk','highriskclinicaltargetvolume'),
+    'ctvir': ('ctvir','irctv','intermediateriskctv','ctvintermediaterisk','intermediateriskclinicaltargetvolume'),
+    'bladder': ('bladder','urinarybladder'),
+    'rectum': ('rectum','rectal'),
+    'sigmoid': ('sigmoid','sigmoidcolon','colonsigmoid'),
+    'bowel': ('bowel','smallbowel','largebowel','intestine','intestines','smallintestine'),
+}
+
+
 def structure_key(name):
-    name = re.sub(r'[ _-]*fx[1-6]\s*$', '', name.strip().lower())
-    name = re.sub('[^a-z0-9]', '', name)
-    for _, key, _ in STRUCTURES:
-        if key in name or (key == 'bowel' and 'intestin' in name):
-            return key
+    from difflib import SequenceMatcher
+    name = name.strip().casefold()
+    name = re.sub(r'(?:fx|fraction|frac|plan)\s*[_ -]*\d+', '', name)
+    compact = re.sub('[^a-z0-9]', '', name)
+    matches = {key for key,aliases in ROI_ALIASES.items()
+               if any(alias in compact for alias in aliases)}
+    if len(matches)==1: return matches.pop()
+    if matches: return None
+    # Short target abbreviations differ by one letter (HR/IR); never guess those.
+    # Typo matching is restricted to unambiguous organ names of similar length.
+    candidates = {}
+    tokens = re.findall(r'[a-z]+', name) + [compact]
+    for key in ('bladder','rectum','sigmoid','bowel'):
+        scores = [SequenceMatcher(None,token,alias).ratio()
+                  for token in tokens for alias in ROI_ALIASES[key]
+                  if len(token)>=5 and abs(len(token)-len(alias))<=1]
+        candidates[key] = max(scores,default=0)
+    ranked=sorted(candidates.items(),key=lambda item:item[1],reverse=True)
+    if ranked[0][1]>=.82 and ranked[0][1]-ranked[1][1]>=.12: return ranked[0][0]
     return None
 
 
@@ -116,12 +143,21 @@ class DVH:
     dose_unit: str = 'Gy'
     volume_unit: str = 'cc'
     curves: dict = field(default_factory=dict)
+    source_date: str = ''
 
     def metrics_at_prescription(self, prescription):
         result = self.metrics.copy()
         for key, ratio in self.relative_doses.items():
             result[key] = number(ratio * positive_dose(prescription))
         return result
+
+
+def file_creation_date(path):
+    stat = Path(path).stat()
+    timestamp = getattr(stat, 'st_birthtime', None)
+    if timestamp is None and os.name == 'nt':
+        timestamp = stat.st_ctime  # Creation time on older Windows Python versions.
+    return datetime.fromtimestamp(timestamp).date().isoformat() if timestamp is not None else ''
 
 
 def parse_dvh(path, prescription_gy=None, volumes_cc=None):
@@ -156,7 +192,7 @@ def parse_dvh(path, prescription_gy=None, volumes_cc=None):
     def header(key):
         match = re.search(r'^\s*' + re.escape(key) + r':[ \t]*(.*)$', text, re.M)
         return match[1].strip() if match else ''
-    parts = re.split(r'^[ \t]*ROI:[ \t]*(.+?)[ \t]*\r?$', text, flags=re.M)
+    parts = re.split(r'^[ \t]*ROI:[ \t]*(.+?)[ \t]*\r?$', text, flags=re.M | re.I)
     if len(parts) == 1:
         raise ValueError('No ROI sections were found.')
     metrics, ratios, ignored, missing = {}, {}, [], []
@@ -210,7 +246,8 @@ def parse_dvh(path, prescription_gy=None, volumes_cc=None):
         raise MissingVolumeError(missing)
     if not metrics:
         raise ValueError('No recognized EMBRACE-2 structures with numeric DVH data were found.')
-    return DVH(header('Patient'),header('Patient Id'),header('Plan'),metrics,ignored,ratios,dose_unit,volume_unit,curves)
+    return DVH(header('Patient'),header('Patient Id'),header('Plan'),metrics,ignored,ratios,dose_unit,volume_unit,curves,
+               file_creation_date(path))
 
 
 @dataclass
@@ -225,8 +262,7 @@ class Course:
     files: list = field(default_factory=lambda: ['']*5)
     plans: list = field(default_factory=lambda: ['']*5)
     explicit: list = field(default_factory=lambda: [False]*5)
-    modalities: list = field(default_factory=lambda: ['']*5)
-    imaging_dates: list = field(default_factory=lambda: ['']*5)
+    modalities: list = field(default_factory=lambda: ['MRI + CT']*5)
     dvhs: list = field(default_factory=lambda: [None]*5)
     screenshots: list = field(default_factory=lambda: [None]*5)
     relative_doses: list = field(default_factory=lambda: [{} for _ in range(5)])
@@ -286,8 +322,7 @@ class Course:
                 self.relative_doses[fx] = {}
                 self.files[fx] = self.plans[fx] = ''
                 self.explicit[fx] = False
-                self.modalities[fx] = ''
-                self.imaging_dates[fx] = ''
+                self.modalities[fx] = 'MRI + CT'
                 self.dvhs[fx] = None
                 self.screenshots[fx] = None
         elif count > old:

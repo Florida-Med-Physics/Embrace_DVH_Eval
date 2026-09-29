@@ -94,9 +94,9 @@ def export_pdf(course, output):
         rows=[[p(v,head) for v in labels]]
         commands=[]
         # Fractions retain their source plan names within the worksheet header.
-        rows.append(['Imaging date']+[p(course.imaging_dates[i] or 'Not set',small) for i in range(n)]+['']*4)
-        rows.append(['MRI / CT']+[p(course.modalities[i] or 'Not set',small) for i in range(n)]+['']*4)
+        rows.append(['Localization (MR / CT)']+[p(course.modalities[i] or 'Not set',small) for i in range(n)]+['']*4)
         rows.append(['Plan / source']+[p(course.files[i] or course.plans[i] or 'Manual',small) for i in range(n)]+['']*4)
+        rows.append(['Date']+[p(course.dvhs[i].source_date or 'Unavailable',small) if course.dvhs[i] else p('Not imported',small) for i in range(n)]+['']*4)
         for name,key,metrics in definitions:
             r=len(rows)
             rows.append([name]+['']*(n+4))

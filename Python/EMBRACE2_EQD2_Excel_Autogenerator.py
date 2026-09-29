@@ -162,11 +162,9 @@ class App(tk.Tk):
         self.rx_summary.pack(side='left')
         modality_frame=tk.Frame(self.dashboard,bg=BG,padx=4,pady=3)
         modality_frame.pack(fill='x',padx=12,pady=2)
-        tk.Label(modality_frame,text='Imaging',bg=BG,fg=INK).pack(side='left',padx=(0,8))
+        tk.Label(modality_frame,text='Localization (MR / CT)',bg=BG,fg=INK).pack(side='left',padx=(0,8))
         self.modality_vars=[]
         self.modality_boxes=[]
-        self.imaging_date_vars=[]
-        self.imaging_date_entries=[]
         for fx in range(5):
             tk.Label(modality_frame,text=f'Fx {fx+1}',bg=BG,fg=INK).pack(side='left',padx=(8,3))
             var=tk.StringVar()
@@ -174,16 +172,6 @@ class App(tk.Tk):
             box.pack(side='left')
             box.bind('<<ComboboxSelected>>',lambda e,i=fx:self.set_modality(i))
             self.modality_vars.append(var); self.modality_boxes.append(box)
-        date_frame=tk.Frame(self.dashboard,bg=BG,padx=4,pady=2)
-        date_frame.pack(fill='x',padx=12,pady=2)
-        tk.Label(date_frame,text='Imaging date (YYYY-MM-DD)',bg=BG,fg=INK).pack(side='left')
-        for fx in range(5):
-            tk.Label(date_frame,text=f'Fx {fx+1}',bg=BG,fg=INK).pack(side='left',padx=(6,2))
-            var=tk.StringVar()
-            entry=tk.Entry(date_frame,textvariable=var,width=10,font=('Arial',10))
-            entry.pack(side='left')
-            entry.bind('<Return>',self.edit_pending); entry.bind('<FocusOut>',self.edit_pending)
-            self.imaging_date_vars.append(var); self.imaging_date_entries.append(entry)
         attachments=tk.Frame(self.dashboard,bg=BG,padx=4,pady=3)
         attachments.pack(fill='x',padx=12,pady=2)
         tk.Label(attachments,text='PDF images for',bg=BG,fg=INK).pack(side='left')
@@ -211,7 +199,7 @@ class App(tk.Tk):
             MetricTable.cell(self.prior_frame,row,0,title,'white')
             for col in range(1,4):
                 if col==1 and row<3:
-                    entry=tk.Entry(self.prior_frame,textvariable=self.prior_vars[row-1],bg=BLUE,fg=INK,justify='center',relief='flat',borderwidth=0,font=('Arial',10),width=6)
+                    entry=tk.Entry(self.prior_frame,textvariable=self.prior_vars[row-1],bg=BLUE,fg=INK,justify='center',relief='flat',borderwidth=0,highlightthickness=0,font=('Arial',10),width=6)
                     entry.grid(row=row,column=col,sticky='nsew',padx=1,pady=1)
                     entry.bind('<Return>',self.edit_pending)
                     entry.bind('<FocusOut>',self.edit_pending)
@@ -251,8 +239,6 @@ class App(tk.Tk):
         c=self.course
         for fx,box in enumerate(self.modality_boxes):
             self.modality_vars[fx].set(c.modalities[fx])
-            self.imaging_date_vars[fx].set(c.imaging_dates[fx])
-            self.imaging_date_entries[fx].configure(state='normal' if fx<c.count else 'disabled')
             box.configure(state='readonly' if fx<c.count else 'disabled')
         self.image_fx_box.configure(values=[f'Fx {i+1}' for i in range(c.count)])
         if int(self.image_fx.get().split()[-1])>c.count: self.image_fx.set('Fx 1')
@@ -303,15 +289,6 @@ class App(tk.Tk):
         self._committing=True
         try:
             updated=deepcopy(self.course)
-            from datetime import date
-            for fx in range(updated.count):
-                value=self.imaging_date_vars[fx].get().strip()
-                if value:
-                    try:
-                        if date.fromisoformat(value).isoformat()!=value: raise ValueError()
-                    except ValueError:
-                        raise ValueError(f'Fx {fx+1}: enter imaging date as YYYY-MM-DD.')
-                updated.imaging_dates[fx]=value
             if self.prescription_var.get()!=self.prescription_displayed:
                 updated.set_prescription(self.prescription_var.get())
             for (key,fx),(var,_) in self.inputs.items():
@@ -414,8 +391,7 @@ class App(tk.Tk):
         for fx in range(self.course.count):
             if not self.course.explicit[fx]: continue
             absent=[]
-            if not self.course.modalities[fx]: absent.append('MRI/CT')
-            if not self.course.imaging_dates[fx]: absent.append('imaging date')
+            if not self.course.modalities[fx]: absent.append('localization (MR/CT)')
             if not self.course.dvhs[fx] or not self.course.dvhs[fx].curves: absent.append('DVH curves (reload TXT)')
             if not self.course.screenshots[fx]: absent.append('Oncentra screenshot (Capture monitor or Attach screenshot)')
             if absent: missing.append(f'Fx {fx+1}: '+', '.join(absent))
