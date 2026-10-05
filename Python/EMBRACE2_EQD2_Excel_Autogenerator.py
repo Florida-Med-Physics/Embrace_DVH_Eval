@@ -397,12 +397,16 @@ class App(tk.Tk):
             if absent: missing.append(f'Fx {fx+1}: '+', '.join(absent))
         if missing and not messagebox.askyesno('Missing report details','The following items are missing:\n\n'+'\n'.join(missing)+'\n\nExport without these items? Choose No to add them first.',default='no',parent=self):
             return
-        output=filedialog.asksaveasfilename(title='Export PDF report' ,initialfile='EMBRACE2_EQD2_Report.pdf',defaultextension='.pdf',filetypes=[('PDF report','*.pdf')])
+        output=filedialog.asksaveasfilename(title='Export report and companion EMBRACE worksheet PDF' ,initialfile='EMBRACE2_EQD2_Report.pdf',defaultextension='.pdf',filetypes=[('PDF report','*.pdf')])
         if not output:
+            return
+        worksheet=Path(output).with_name(Path(output).stem+'_EMBRACE_Worksheet.pdf')
+        if worksheet.exists() and not messagebox.askyesno('Replace worksheet PDF?',f'{worksheet.name} already exists. Replace it?',parent=self):
             return
         try:
             export_pdf(self.course,output,fraction=fraction)
-            self.status_text.set(f'Exported {Path(output).name}.')
+            export_pdf(self.course,worksheet,fraction=fraction,worksheet_only=True)
+            self.status_text.set(f'Exported {Path(output).name} and {worksheet.name}.')
         except Exception as error:
             messagebox.showerror('PDF Export Error',str(error),parent=self)
 
