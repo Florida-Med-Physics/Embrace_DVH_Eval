@@ -49,7 +49,7 @@ def draw_letterhead(canvas):
     canvas.restoreState()
 
 
-def export_pdf(course, output):
+def export_pdf(course, output, fraction=0):
     """Print the dashboard data in the EMBRACE worksheet's column order."""
     output=Path(output)
     if not any(v is not None for values in course.values[:course.count] for v in values.values()):
@@ -118,7 +118,10 @@ def export_pdf(course, output):
         section.setStyle(TableStyle([('BACKGROUND',(0,0),(-1,-1),INK),('TEXTCOLOR',(0,0),(-1,-1),colors.white),('FONTNAME',(0,0),(-1,-1),'Helvetica-Bold'),('FONTSIZE',(0,0),(-1,-1),10),('TOPPADDING',(0,0),(-1,-1),4),('BOTTOMPADDING',(0,0),(-1,-1),4)]))
         story += [section,style_table(Table(rows,colWidths=widths,repeatRows=4,hAlign='LEFT'),commands)]
     from embrace_dvh_report import appendix
-    story.extend(appendix(course))
+    front=appendix(course,fraction)
+    if front:
+        if isinstance(front[0],PageBreak): front.pop(0)
+        story=front+[PageBreak()]+story
     timestamp=datetime.now().strftime('%Y-%m-%d %H:%M')
     def footer(canvas,doc):
         canvas.setFont('Helvetica',7)

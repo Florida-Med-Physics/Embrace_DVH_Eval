@@ -174,12 +174,12 @@ class App(tk.Tk):
             self.modality_vars.append(var); self.modality_boxes.append(box)
         attachments=tk.Frame(self.dashboard,bg=BG,padx=4,pady=3)
         attachments.pack(fill='x',padx=12,pady=2)
-        tk.Label(attachments,text='PDF images for',bg=BG,fg=INK).pack(side='left')
+        tk.Label(attachments,text='PDF fraction',bg=BG,fg=INK).pack(side='left')
         self.image_fx=tk.StringVar(value='Fx 1')
         self.image_fx_box=ttk.Combobox(attachments,textvariable=self.image_fx,state='readonly',width=5)
         self.image_fx_box.pack(side='left',padx=5)
         ttk.Button(attachments,text='Attach screenshot',command=lambda:self.add_screenshot(False)).pack(side='left',padx=3)
-        ttk.Button(attachments,text='Capture monitor',command=lambda:self.add_screenshot(True)).pack(side='left',padx=3)
+        ttk.Button(attachments,text='Snip screen',command=lambda:self.add_screenshot(True)).pack(side='left',padx=3)
         ttk.Button(attachments,text='Remove image',command=self.remove_screenshot).pack(side='left',padx=3)
         self.image_status=tk.Label(attachments,text='',bg=BG,fg=INK)
         self.image_status.pack(side='left',padx=6)
@@ -388,12 +388,12 @@ class App(tk.Tk):
         if not self.commit_inputs():
             return
         missing=[]
-        for fx in range(self.course.count):
-            if not self.course.explicit[fx]: continue
+        fraction=int(self.image_fx.get().split()[-1])-1
+        for fx in (fraction,):
             absent=[]
             if not self.course.modalities[fx]: absent.append('localization (MR/CT)')
             if not self.course.dvhs[fx] or not self.course.dvhs[fx].curves: absent.append('DVH curves (reload TXT)')
-            if not self.course.screenshots[fx]: absent.append('Oncentra screenshot (Capture monitor or Attach screenshot)')
+            if not self.course.screenshots[fx]: absent.append('Oncentra screenshot (Snip screen or Attach screenshot)')
             if absent: missing.append(f'Fx {fx+1}: '+', '.join(absent))
         if missing and not messagebox.askyesno('Missing report details','The following items are missing:\n\n'+'\n'.join(missing)+'\n\nExport without these items? Choose No to add them first.',default='no',parent=self):
             return
@@ -401,7 +401,7 @@ class App(tk.Tk):
         if not output:
             return
         try:
-            export_pdf(self.course,output)
+            export_pdf(self.course,output,fraction=fraction)
             self.status_text.set(f'Exported {Path(output).name}.')
         except Exception as error:
             messagebox.showerror('PDF Export Error',str(error),parent=self)

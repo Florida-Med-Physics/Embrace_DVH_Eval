@@ -8,7 +8,7 @@ from reportlab.lib.styles import ParagraphStyle
 from reportlab.platypus import Paragraph, Table, TableStyle, PageBreak, Spacer, Image
 from embrace_core import STRUCTURES, dose_at_volume
 
-PALETTE={'bladder':'#e9a600','bowel':'#d76564','sigmoid':'#36a45b','ctvhr':'#d325cc','ctvir':'#dedb00','gtvres':'#00cbd2','rectum':'#ed8959'}
+PALETTE={'bladder':'#40bfb5','bowel':'#e08080','sigmoid':'#36a45b','ctvhr':'#348dcb','ctvir':'#dedb00','gtvres':'#cf4545','rectum':'#ed8959'}
 STYLE=ParagraphStyle('DVH appendix',fontName='Helvetica',fontSize=8,leading=10)
 
 def p(text): return Paragraph(escape(str(text)),STYLE)
@@ -89,9 +89,11 @@ def plot(parsed,prescription):
     return drawing
 
 
-def appendix(course):
+def appendix(course, fraction=0):
+    if not 0 <= fraction < course.count:
+        raise ValueError('Choose an active report fraction.')
     story=[]
-    for fx in range(course.count):
+    for fx in (fraction,):
         parsed=course.dvhs[fx]
         modality=course.modalities[fx] or 'Not specified'
         context=f'Patient: {course.patient or "Not specified"} | ID: {course.patient_id or "Not specified"} | Fx {fx+1} | Localization (MR / CT): {modality}'
