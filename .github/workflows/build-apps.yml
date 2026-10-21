@@ -7,10 +7,17 @@ on:
       - 'packaging/**'
       - '.github/workflows/build-apps.yml'
   workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Existing draft release to receive tested executables
+        required: false
+        type: string
 permissions:
   contents: read
 jobs:
   build:
+    permissions:
+      contents: write
     name: ${{ matrix.label }}
     strategy:
       fail-fast: false
@@ -32,7 +39,17 @@ jobs:
         run: python -m unittest discover -s Python/tests -v
       - name: Build and smoke-test packaged application
         run: python packaging/build.py
+      - name: Upload executables to draft release
+        if: github.event_name == 'workflow_dispatch' && inputs.release_tag != ''
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+        run: |
+          test "$(gh release view "$RELEASE_TAG" --json isDraft --jq .isDraft)" = true
+          gh release upload "$RELEASE_TAG" dist/EMBRACE-EQD2-*.zip --clobber
       - name: Upload standalone application
+        if: github.event_name != 'workflow_dispatch' || inputs.release_tag == ''
         uses: actions/upload-artifact@v4
         with:
           name: EMBRACE-EQD2-${{ matrix.label }}
