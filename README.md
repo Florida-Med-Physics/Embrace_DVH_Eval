@@ -1,5 +1,7 @@
 # EMBRACE-2 EQD2 Dashboard
 
+> **Not validated for clinical use.** This software has not been validated or commissioned for clinical use. Every calculation, export, and report it produces — including the EMBRACE-2 and Cylinder (PORTEC-4) modes, α/β values, and dose constraints — must be reviewed by a qualified medical physicist before it informs any clinical decision.
+
 A Python desktop port of `EMBRACE2_EQD2_Excel_Autogenerator (19).m` supplied September 16, 2026. The Python interface follows the MATLAB dashboard: patient and plan details, prior RT, targets, organs at risk, editable physical doses and read-only volumes, calculated EQD2 rows, colored totals, and Excel export.
 
 ## Launch
