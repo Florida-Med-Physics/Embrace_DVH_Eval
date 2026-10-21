@@ -196,7 +196,12 @@ def export_comparison_pdf(comparison, course, output):
                     for slot,total in enumerate(totals):
                         commands += [('BACKGROUND',(slot+1,r),(slot+1,r),STATUS[status(total,metric)]),('FONTNAME',(slot+1,r),(slot+1,r),'Helvetica-Bold')]
                     commands.append(('LINEBELOW',(0,r),(-1,r),.2,colors.HexColor('#e3e6e9')))
-        table=Table(rows,colWidths=[144,62,62,62,62,62,74],repeatRows=1,hAlign='LEFT')
+        widths=[144,62,62,62,62,62,74]
+        if course.mode=='Cylinder':
+            # No PORTEC-4 constraints are defined; drop the empty goal columns.
+            rows=[row[:5] for row in rows]
+            widths=[144,96,96,96,96]
+        table=Table(rows,colWidths=widths,repeatRows=1,hAlign='LEFT')
         table.setStyle(TableStyle(commands+[('GRID',(0,0),(-1,-1),.25,colors.black)]))
         story += [table,Spacer(1,7),p('Physical dose rows: one fraction. Total EQD2 rows: all BT fractions.' if course.mode=='Cylinder' else 'Physical dose rows: one fraction. Total EQD2 rows: all fractions + prior RT.',small),
                   p('Blank metrics are not included. Absolute doses stay unchanged; % doses use prescription. Values display one decimal.',small)]
@@ -210,7 +215,7 @@ def export_comparison_pdf(comparison, course, output):
     fd,temp=tempfile.mkstemp(suffix='.pdf',dir=output.parent)
     os.close(fd)
     try:
-        doc=SimpleDocTemplate(temp,pagesize=letter,leftMargin=36,rightMargin=36,topMargin=68,bottomMargin=48,title='EMBRACE-2 Plan Comparison',author='EMBRACE EQD2')
+        doc=SimpleDocTemplate(temp,pagesize=letter,leftMargin=36,rightMargin=36,topMargin=68,bottomMargin=48,title=course.title+' Plan Comparison',author='EMBRACE EQD2')
         doc.build(story,onFirstPage=footer,onLaterPages=footer)
         os.replace(temp,output)
     finally:

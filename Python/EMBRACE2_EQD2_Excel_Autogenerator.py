@@ -10,7 +10,7 @@ from embrace_import import import_with_volumes
 from embrace_pdf import export_pdf
 from embrace_comparison import ComparisonTab
 
-from embrace_theme import BG, SURFACE, ALT, HEADER, INK, MUTED, BLUE, INPUT_INK, INACTIVE, COLORS, apply_theme
+from embrace_theme import BG, SURFACE, ALT, HEADER, INK, MUTED, BLUE, INPUT_INK, INACTIVE, COLORS, FONT, TITLE_FONT, apply_theme
 
 
 FRAME = '#202326'
@@ -21,7 +21,7 @@ class MetricTable(tk.Frame):
     def __init__(self, parent, app, title, definitions, target):
         super().__init__(parent,bg=FRAME)
         self.app = app
-        tk.Label(self,text=title,bg=FRAME,fg='white',font=('Arial',12,'bold'),anchor='w').pack(fill='x',pady=(3,3))
+        tk.Label(self,text=title,bg=FRAME,fg='white',font=(FONT,12,'bold'),anchor='w').pack(fill='x',pady=(3,3))
         self.header = tk.Frame(self,bg=HEADER)
         self.header.pack(fill='x')
         outer = tk.Frame(self,bg='white')
@@ -52,7 +52,7 @@ class MetricTable(tk.Frame):
             self.headings.append(label)
         row=0
         for title,key,metrics in definitions:
-            section=tk.Label(self.grid_frame,text=title,bg=HEADER,fg=INK,anchor='w',font=('Arial',10,'bold'),padx=7,pady=0)
+            section=tk.Label(self.grid_frame,text=title,bg=HEADER,fg=INK,anchor='w',font=(FONT,10,'bold'),padx=7,pady=0)
             section.grid(row=row,column=0,columnspan=9,sticky='nsew',pady=(8 if row else 0,2))
             row+=1
             for metric in metrics:
@@ -65,7 +65,7 @@ class MetricTable(tk.Frame):
                         var=tk.StringVar()
                         entry=tk.Entry(self.grid_frame,textvariable=var,bg=BLUE,fg=INK,
                                        disabledbackground='#eef0f2',disabledforeground='#7b858f',
-                                       justify='center',relief='flat',borderwidth=0,width=1,font=('Arial',10),
+                                       justify='center',relief='flat',borderwidth=0,width=1,font=(FONT,10),
                                        highlightthickness=1,highlightbackground=BLUE,highlightcolor='#327ca5')
                         entry.grid(row=row,column=fx+1,sticky='nsew',padx=1,pady=0)
                         entry.bind('<Return>',app.edit_pending)
@@ -93,7 +93,7 @@ class MetricTable(tk.Frame):
     @staticmethod
     def cell(parent,row,col,text,bg,bold=False):
         label=tk.Label(parent,text=text,bg=bg,fg=INK,anchor='w' if col == 0 else 'center',
-                       font=('Arial',10,'bold' if bold else 'normal'),padx=5,pady=0,width=1)
+                       font=(FONT,10,'bold' if bold else 'normal'),padx=5,pady=0,width=1)
         label.grid(row=row,column=col,sticky='nsew',padx=(0,1),pady=(0,1))
         return label
 
@@ -128,13 +128,17 @@ class App(tk.Tk):
         self.course=Course()
         self._committing=False
         self.title('EMBRACE-2 EQD2 Excel Autogenerator')
-        self.geometry('1200x980')
-        self.minsize(1020,680)
+        # Fit the screen's height; cap width so table columns never stretch too wide.
+        height=min(980,self.winfo_screenheight()-90)
+        self.geometry(f'1200x{height}+{max(0,(self.winfo_screenwidth()-1200)//2)}+0')
+        self.minsize(1020,min(680,height))
+        self.maxsize(1400,self.winfo_screenheight())
         self.configure(bg=BG)
         apply_theme(self)
         self.mode_courses={'GYN':self.course}
         self.mode_comparisons={}
-        chooser=tk.Frame(self,bg=BG);chooser.pack(fill='x',padx=12,pady=6)
+        # Sits in the tab strip's empty right side so it costs no vertical space.
+        chooser=self.chooser=tk.Frame(self,bg=BG);chooser.place(relx=1,x=-12,y=2,anchor='ne')
         tk.Label(chooser,text='Treatment type',bg=BG,fg=INK).pack(side='left',padx=5)
         self.mode_var=tk.StringVar(value='GYN')
         box=ttk.Combobox(chooser,textvariable=self.mode_var,values=['GYN','Cylinder'],state='readonly',width=12)
@@ -167,14 +171,16 @@ class App(tk.Tk):
         self.cells,self.totals,self.inputs,self.volumes={},{},{},{}
         self.displayed={}
         self.status_text=tk.StringVar(value='Blue cells: enter physical dose. Volumes come from the DVH.')
-        top=tk.Frame(self.dashboard,bg=FRAME)
-        top.pack(fill='x',padx=12,pady=(12,10))
-        tk.Label(top,text=self.course.title+'  Excel Autogenerator',bg=FRAME,fg='white',font=('Arial',22,'bold')).pack(side='left')
-        tk.Label(top,text='UFHPTI',bg=FRAME,fg='#fa4a00',font=('Arial',12,'bold')).pack(side='right')
-        controls=tk.Frame(self.dashboard,bg=BG,padx=8,pady=6)
-        controls.pack(fill='x',padx=12,pady=3)
-        self.patient=tk.Label(controls,bg=BG,fg=INK,font=('Arial',10),anchor='w')
-        self.patient.pack(side='left',fill='x',expand=True)
+        # Course setup occupies the top third; the constraint tables get the rest.
+        self.top=tk.Frame(self.dashboard,bg=FRAME)
+        top=tk.Frame(self.top,bg=FRAME)
+        top.pack(fill='x',padx=12,pady=(8,4))
+        tk.Label(top,text=self.course.title+'  Excel Autogenerator',bg=FRAME,fg='white',font=(TITLE_FONT,18,'bold')).pack(side='left')
+        tk.Label(top,text='UFHPTI',bg=FRAME,fg='#fa4a00',font=(FONT,12,'bold')).pack(side='right')
+        self.patient=tk.Label(top,bg=FRAME,fg='white',font=(FONT,10),anchor='e')
+        self.patient.pack(side='right',padx=16)
+        controls=tk.Frame(self.top,bg=BG,padx=8,pady=4)
+        controls.pack(fill='x',padx=12,pady=2)
         self.count=tk.StringVar(value=f'{self.course.count} Fx')
         count=ttk.Combobox(controls,textvariable=self.count,values=['3 Fx','4 Fx','5 Fx'],width=5,state='readonly')
         count.pack(side='left',padx=(0,8))
@@ -184,33 +190,32 @@ class App(tk.Tk):
             button=ttk.Button(controls,text=f'Load F{fx+1}',command=lambda i=fx:self.load(i),width=8)
             button.pack(side='left',padx=2)
             self.buttons.append(button)
-        self.rx_frame=tk.Frame(self.dashboard,bg=BG)
-        self.rx_frame.pack(fill='x',padx=12,pady=2)
-        tk.Label(self.rx_frame,text='Prescription',bg=BG,fg=INK,font=('Arial',10)).pack(side='left',padx=(0,6))
+        self.rx_frame=controls
+        tk.Label(self.rx_frame,text='Prescription',bg=BG,fg=INK,font=(FONT,10)).pack(side='left',padx=(16,6))
         self.prescription_var=tk.StringVar(value='7.0')
         prescription=tk.Entry(self.rx_frame,textvariable=self.prescription_var,bg=BLUE,fg=INPUT_INK,
                               justify='center',relief='flat',borderwidth=0,highlightthickness=1,
-                              highlightbackground='black',highlightcolor='black',font=('Arial',10),width=6)
+                              highlightbackground='black',highlightcolor='black',font=(FONT,10),width=6)
         prescription.pack(side='left')
         prescription.bind('<Return>',self.edit_pending)
         prescription.bind('<FocusOut>',self.edit_pending)
-        tk.Label(self.rx_frame,text='Gy / Fx  ×',bg=BG,fg=INK,font=('Arial',10)).pack(side='left',padx=(5,12))
-        self.rx_summary=tk.Label(self.rx_frame,bg=BG,fg=INK,font=('Arial',10))
+        tk.Label(self.rx_frame,text='Gy / Fx  ×',bg=BG,fg=INK,font=(FONT,10)).pack(side='left',padx=(5,12))
+        self.rx_summary=tk.Label(self.rx_frame,bg=BG,fg=INK,font=(FONT,10))
         self.rx_summary.pack(side='left')
-        modality_frame=tk.Frame(self.dashboard,bg=BG,padx=4,pady=3)
-        modality_frame.pack(fill='x',padx=12,pady=2)
+        modality_frame=tk.Frame(self.top,bg=BG,padx=4,pady=2)
+        modality_frame.pack(fill='x',padx=12,pady=(2,0))
         tk.Label(modality_frame,text='Localization (MR / CT)',bg=BG,fg=INK).pack(side='left',padx=(0,8))
         self.modality_vars=[]
         self.modality_boxes=[]
         for fx in range(5):
             tk.Label(modality_frame,text=f'Fx {fx+1}',bg=BG,fg=INK).pack(side='left',padx=(8,3))
             var=tk.StringVar()
-            box=ttk.Combobox(modality_frame,textvariable=var,values=['','MRI','CT','MRI + CT'],state='readonly',width=7)
+            box=ttk.Combobox(modality_frame,textvariable=var,values=['','MRI','CT','MRI + CT'],state='readonly',width=9)
             box.pack(side='left')
             box.bind('<<ComboboxSelected>>',lambda e,i=fx:self.set_modality(i))
             self.modality_vars.append(var); self.modality_boxes.append(box)
-        attachments=tk.Frame(self.dashboard,bg=BG,padx=4,pady=3)
-        attachments.pack(fill='x',padx=12,pady=2)
+        attachments=tk.Frame(self.top,bg=BG,padx=4,pady=2)
+        attachments.pack(fill='x',padx=12,pady=(0,2))
         tk.Label(attachments,text='PDF fraction',bg=BG,fg=INK).pack(side='left')
         self.image_fx=tk.StringVar(value='Fx 1')
         self.image_fx_box=ttk.Combobox(attachments,textvariable=self.image_fx,state='readonly',width=5)
@@ -220,54 +225,61 @@ class App(tk.Tk):
         ttk.Button(attachments,text='Remove image',command=self.remove_screenshot).pack(side='left',padx=3)
         self.image_status=tk.Label(attachments,text='',bg=BG,fg=INK)
         self.image_status.pack(side='left',padx=6)
-        self.plans=self.label('',10)
         self.show_files=tk.BooleanVar(value=True)
-        self.files=tk.Label(self.dashboard,text='',bg=FRAME,fg='white',anchor='w',justify='left',wraplength=1160,font=('Arial',9))
+        self.files=tk.Label(self.top,text='',bg=FRAME,fg='white',anchor='w',justify='left',wraplength=1160,font=(FONT,9))
         self.files.pack(fill='x',padx=12,pady=2)
-        prior_heading=tk.Label(self.dashboard,text='PRIOR RT / EBRT FRACTIONATION',bg=FRAME,fg='white',font=('Arial',12,'bold'),anchor='w')
-        prior_heading.pack(fill='x',padx=12,pady=(6,3))
-        self.prior_frame=tk.Frame(self.dashboard,bg='#d3d8dc')
-        self.prior_frame.pack(fill='x',padx=12,pady=(0,6))
-        for col,title in enumerate(('Parameter','Value','EQD2 [Gy] (α/β = 10)','EQD2 [Gy] (α/β = 3)')):
-            MetricTable.cell(self.prior_frame,0,col,title,HEADER,True)
-            self.prior_frame.columnconfigure(col,weight=3 if col==0 else 2)
+        self.prior_frame=tk.Frame(self.top,bg='#d3d8dc')
+        self.prior_frame.pack(fill='x',padx=12,pady=(4,4))
+        # One header row and one value row; the section name spans both.
+        section=tk.Label(self.prior_frame,text='PRIOR RT /\nEBRT',bg=HEADER,fg=INK,font=(FONT,10,'bold'),anchor='w',justify='left',padx=5)
+        section.grid(row=0,column=0,rowspan=2,sticky='nsew',padx=(0,1),pady=(0,1))
+        for col,title in enumerate(('Dose per fraction [Gy]','Fractions without central shield','Total dose [Gy]','EQD2 [Gy] (α/β = 10)','EQD2 [Gy] (α/β = 3)'),1):
+            MetricTable.cell(self.prior_frame,0,col,title,HEADER,True).configure(anchor='center')
+            self.prior_frame.columnconfigure(col,weight=2)
+        self.prior_frame.columnconfigure(0,weight=1)
         self.prior_vars=[tk.StringVar(),tk.StringVar()]
         self.prior_display={}
-        for row,title in enumerate(('Dose per fraction [Gy]','Fractions without central shield','Total dose [Gy]'),1):
-            MetricTable.cell(self.prior_frame,row,0,title,'white')
-            for col in range(1,4):
-                if col==1 and row<3:
-                    entry=tk.Entry(self.prior_frame,textvariable=self.prior_vars[row-1],bg=BLUE,fg=INK,justify='center',relief='flat',borderwidth=0,highlightthickness=0,font=('Arial',10),width=6)
-                    entry.grid(row=row,column=col,sticky='nsew',padx=1,pady=1)
-                    entry.bind('<Return>',self.edit_pending)
-                    entry.bind('<FocusOut>',self.edit_pending)
-                else:
-                    self.prior_display[row,col]=MetricTable.cell(self.prior_frame,row,col,'','white')
+        for col,var in enumerate(self.prior_vars,1):
+            entry=tk.Entry(self.prior_frame,textvariable=var,bg=BLUE,fg=INK,justify='center',relief='flat',borderwidth=0,highlightthickness=0,font=(FONT,10),width=6)
+            entry.grid(row=1,column=col,sticky='nsew',padx=(0,1),pady=(0,1))
+            entry.bind('<Return>',self.edit_pending)
+            entry.bind('<FocusOut>',self.edit_pending)
+        # Keys keep refresh()'s (row,col) meaning: col 1 total dose, 2 and 3 EQD2.
+        for key,col in (((2,1),3),((2,2),4),((2,3),5)):
+            self.prior_display[key]=MetricTable.cell(self.prior_frame,1,col,'','white')
         if self.course.mode=='Cylinder':
-            prior_heading.pack_forget();self.prior_frame.pack_forget()
+            self.prior_frame.pack_forget()
         body=tk.PanedWindow(self.dashboard,orient='vertical',bg=FRAME,sashwidth=8,bd=0)
-        body.pack(fill='both',expand=True,padx=12,pady=(0,3))
         self.tables=[]
         for title,definitions,target in [(title,definitions,title=='TARGETS') for title,definitions in self.course.sections]:
             table=MetricTable(body,self,title,definitions,target)
             body.add(table,minsize=230 if target else 160,stretch='always')
             self.tables.append(table)
         footer=tk.Frame(self.dashboard,bg=BG)
-        footer.pack(side='bottom',fill='x',padx=12,pady=(6,10),before=body)
-        ttk.Button(footer,text='Export Excel',command=self.export,width=14).pack(side='right',padx=(10,8),pady=8)
-        ttk.Button(footer,text='Export PDF',command=self.export_report,width=14).pack(side='right',padx=(10,0),pady=8)
-        ttk.Button(footer,text='Clear all',command=self.clear,width=10).pack(side='right',padx=(10,0),pady=8)
-        tk.Label(footer,textvariable=self.status_text,bg=BG,fg='#505b67',font=('Arial',10),anchor='w',justify='left',wraplength=480).pack(side='left',fill='x',expand=True,padx=8,pady=8)
+        # Equal-unit rows split the space 1:3; setup never shrinks below its content.
+        self.top.grid(row=0,column=0,sticky='nsew')
+        body.grid(row=1,column=0,sticky='nsew',padx=12,pady=(0,3))
+        footer.grid(row=2,column=0,sticky='ew',padx=12,pady=(2,6))
+        self.dashboard.columnconfigure(0,weight=1)
+        self.dashboard.rowconfigure(0,weight=1,uniform='split')
+        self.dashboard.rowconfigure(1,weight=3,uniform='split')
+        self.chooser.lift()
+        self.top.update_idletasks()
+        self.dashboard.rowconfigure(0,minsize=self.top.winfo_reqheight())
+        ttk.Button(footer,text='Export Excel',command=self.export,width=14).pack(side='right',padx=(10,8),pady=5)
+        ttk.Button(footer,text='Export PDF',command=self.export_report,width=14).pack(side='right',padx=(10,0),pady=5)
+        ttk.Button(footer,text='Clear all',command=self.clear,width=10).pack(side='right',padx=(10,0),pady=5)
+        status_label=tk.Label(footer,textvariable=self.status_text,bg=BG,fg='#505b67',font=(FONT,10),anchor='w',justify='left',wraplength=300,height=2)
+        # Fixed two-line height: status changes never resize the tables above.
+        status_label.pack(side='left',fill='x',expand=True,padx=8,pady=5)
+        status_label.bind('<Configure>',lambda e:e.widget.configure(wraplength=max(120,e.width-4)))
         self.comparison=ComparisonTab(self.notebook,self)
         self.notebook.add(self.comparison,text='Plan comparison')
         self.notebook.bind('<<NotebookTabChanged>>',lambda e:self.commit_inputs())
         self.refresh()
-        self.after(100,lambda:body.sash_place(0,0,int(body.winfo_height()*.58)) if body.winfo_exists() else None)
-
-    def label(self,text,size=11):
-        label=tk.Label(self.dashboard,text=text,bg=FRAME,fg='white',anchor='w',justify='left',wraplength=1100,font=('Arial',size))
-        label.pack(fill='x',padx=12,pady=2)
-        return label
+        split=.42 if self.course.mode=='Cylinder' else .58
+        # Place the divider once the pane has its real size (and again if the window resizes).
+        body.bind('<Configure>',lambda e:body.sash_place(0,0,int(e.height*split)) if e.height>1 else None)
 
     def toggle_files(self):
         if self.show_files.get():
@@ -288,8 +300,7 @@ class App(tk.Tk):
         self.prescription_displayed=self.prescription_var.get()
         self.rx_summary.configure(text=f'{c.count} x {fmt(c.prescription_gy)} Gy = {fmt(c.count*c.prescription_gy)} Gy  |  Prescription BT EQD2₁₀: {fmt(c.prescription_eqd2())} Gy')
         self.patient.configure(text=f'Patient: {c.patient or "—"}   |   ID: {c.patient_id or "—"}')
-        self.plans.configure(text='    |    '.join(f'Fx {i+1}: {c.plans[i] or "—"}' for i in range(c.count)))
-        self.files.configure(text='    |    '.join(f'Fx {i+1}: {c.files[i] or "No file loaded"}' for i in range(c.count)))
+        self.files.configure(text='    |    '.join(f'Fx {i+1}: {c.plans[i] or "—"} · {c.files[i] or "No file loaded"}' for i in range(c.count)))
         self.prior_vars[0].set(fmt(c.dose_per_fx))
         self.prior_vars[1].set(str(c.prior_fractions))
         self.prior_displayed=[v.get() for v in self.prior_vars]
@@ -438,7 +449,7 @@ class App(tk.Tk):
             if absent: missing.append(f'Fx {fx+1}: '+', '.join(absent))
         if missing and not messagebox.askyesno('Missing report details','The following items are missing:\n\n'+'\n'.join(missing)+'\n\nExport without these items? Choose No to add them first.',default='no',parent=self):
             return
-        output=filedialog.asksaveasfilename(title='Export report and companion EMBRACE worksheet PDF' ,initialfile=('PORTEC4' if self.course.mode=='Cylinder' else 'EMBRACE2')+'_EQD2_Report.pdf',defaultextension='.pdf',filetypes=[('PDF report','*.pdf')])
+        output=filedialog.asksaveasfilename(title='Export report and companion '+('PORTEC-4' if self.course.mode=='Cylinder' else 'EMBRACE')+' worksheet PDF',initialfile=('PORTEC4' if self.course.mode=='Cylinder' else 'EMBRACE2')+'_EQD2_Report.pdf',defaultextension='.pdf',filetypes=[('PDF report','*.pdf')])
         if not output:
             return
         worksheet=Path(output).with_name(Path(output).stem+('_PORTEC4_Worksheet.pdf' if self.course.mode=='Cylinder' else '_EMBRACE_Worksheet.pdf'))
@@ -523,10 +534,11 @@ def packaged_smoke_test(report_path):
         app.inputs['ctvhr_D90',0][0].set('7');app.edit_pending();app.update()
         assert app.totals['ctvhr_D90'].cget('bg')=='white'
         assert app.tables[0].headings[6].cget('text')=='Total BT\nEQD2 [Gy]'
+        assert not app.comparison.headings[5].winfo_ismapped()
         app.mode_var.set('GYN');app.change_mode();app.update()
         assert app.course.values==saved.values and app.course.count==saved.count
         assert app.prior_frame.winfo_ismapped()
-        Path(report_path).write_text(json.dumps({'status':'passed','checks':['GUI','precision preservation','fixed headers','ESTRO dose/EQD2 row order','fraction controls','bundled Excel export','PDF export','four-plan comparison','comparison PDF']}))
+        Path(report_path).write_text(json.dumps({'status':'passed','checks':['GUI','precision preservation','fixed headers','ESTRO dose/EQD2 row order','fraction controls','bundled Excel export','PDF export','four-plan comparison','comparison PDF','cylinder mode']}))
     finally:
         app.destroy()
 

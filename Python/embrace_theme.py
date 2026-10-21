@@ -1,5 +1,21 @@
 """Shared light interface palette; blue is reserved for editable numeric fields."""
-from tkinter import ttk
+import os
+import platform
+from pathlib import Path
+from tkinter import ttk, font as tkfont
+
+
+def system_font():
+    """The operating system's own UI typeface; Windows 11 ships Segoe UI Variable."""
+    if platform.system()=='Windows':
+        fonts=Path(os.environ.get('WINDIR',r'C:\Windows'))/'Fonts'
+        return 'Segoe UI Variable Text' if (fonts/'SegUIVar.ttf').exists() else 'Segoe UI'
+    return 'Helvetica Neue' if platform.system()=='Darwin' else 'DejaVu Sans'
+
+
+FONT=system_font()
+# Segoe UI Variable has a Display cut tuned for large titles.
+TITLE_FONT=FONT.replace(' Text',' Display')
 
 BG='#f4f5f7'
 SURFACE='#ffffff'
@@ -16,7 +32,9 @@ COLORS={'neutral':SURFACE,'pass':'#73bf6e','warn':'#f5cc52','fail':'#e0574d'}
 def apply_theme(root):
     style=ttk.Style(root)
     style.theme_use('clam')
-    style.configure('.',background=BG,foreground=INK,font=('Arial',10))
+    for name in ('TkDefaultFont','TkTextFont','TkMenuFont','TkHeadingFont'):
+        tkfont.nametofont(name,root=root).configure(family=FONT,size=10)
+    style.configure('.',background=BG,foreground=INK,font=(FONT,10))
     style.configure('TNotebook',background=BG,borderwidth=0)
     style.configure('TNotebook.Tab',background=SURFACE,foreground=MUTED,padding=(14,5))
     style.map('TNotebook.Tab',background=[('selected',HEADER)],foreground=[('selected',INK)])

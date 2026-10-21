@@ -5,7 +5,7 @@ from tkinter import ttk, filedialog, messagebox
 from embrace_core import PlanComparison, STRUCTURES, fmt, status, positive_dose, best_metric_slots
 
 from embrace_import import import_with_volumes
-from embrace_theme import BG, SURFACE, ALT, HEADER, INK, MUTED, BLUE, INPUT_INK, COLORS
+from embrace_theme import BG, SURFACE, ALT, HEADER, INK, MUTED, BLUE, INPUT_INK, COLORS, FONT, TITLE_FONT
 
 
 FRAME = '#202326'
@@ -21,14 +21,15 @@ class ComparisonTab(tk.Frame):
         self.physical={}
         self.headings=[]
         self.best_cells={}
+        self.cylinder=app.course.mode=='Cylinder'
         top=tk.Frame(self,bg=FRAME)
         top.pack(fill='x',padx=12,pady=(12,10))
-        tk.Label(top,text=app.course.title+'  Plan Comparison',bg=FRAME,fg='white',font=('Arial',22,'bold')).pack(side='left')
-        self.patient=tk.Label(top,bg=FRAME,fg='white',font=('Arial',10))
+        tk.Label(top,text=app.course.title+'  Plan Comparison',bg=FRAME,fg='white',font=(TITLE_FONT,18,'bold')).pack(side='left')
+        self.patient=tk.Label(top,bg=FRAME,fg='white',font=(FONT,10))
         self.patient.pack(side='right')
         control=tk.Frame(self,bg=BG,padx=8,pady=6)
         control.pack(fill='x',padx=12,pady=3)
-        tk.Label(control,text='Repeat each plan for',bg=BG,fg=INK,font=('Arial',10)).pack(side='left')
+        tk.Label(control,text='Repeat each plan for',bg=BG,fg=INK,font=(FONT,10)).pack(side='left')
         self.count=tk.StringVar(value=app.count.get())
         count=ttk.Combobox(control,textvariable=self.count,values=['3 Fx','4 Fx','5 Fx'],state='readonly',width=5)
         count.pack(side='left',padx=6)
@@ -38,15 +39,15 @@ class ComparisonTab(tk.Frame):
         self.prescription_displayed='7.0'
         rx=tk.Entry(control,textvariable=self.prescription_var,bg=BLUE,fg=INPUT_INK,
                     width=5,justify='center',relief='flat',borderwidth=0,highlightthickness=1,
-                    highlightbackground=BLUE,highlightcolor='#327ca5',font=('Arial',10))
+                    highlightbackground=BLUE,highlightcolor='#327ca5',font=(FONT,10))
         rx.pack(side='left',padx=(8,3))
         rx.bind('<Return>',self.commit_prescription)
         rx.bind('<FocusOut>',self.commit_prescription)
-        tk.Label(control,text='Gy / Fx',bg=BG,fg=INK,font=('Arial',10)).pack(side='left')
-        self.summary=tk.Label(control,bg=BG,fg=INK,font=('Arial',10))
+        tk.Label(control,text='Gy / Fx',bg=BG,fg=INK,font=(FONT,10)).pack(side='left')
+        self.summary=tk.Label(control,bg=BG,fg=INK,font=(FONT,10))
         self.summary.pack(side='left',padx=10)
         ttk.Button(control,text='Clear comparison',command=self.clear_all).pack(side='right')
-        self.instructions=tk.Label(self,text='One TXT per plan. Each dose distribution is repeated for the selected fraction count, then prior RT is added.',bg=FRAME,fg='white',font=('Arial',10),anchor='w')
+        self.instructions=tk.Label(self,text='One TXT per plan. Each dose distribution is repeated for the selected fraction count, then prior RT is added.',bg=FRAME,fg='white',font=(FONT,10),anchor='w')
         if app.course.mode=='Cylinder': self.instructions.configure(text='One TXT per plan. Each dose distribution is repeated for the selected fraction count; BT only.')
         self.instructions.pack(fill='x',padx=12,pady=3)
         cards=tk.Frame(self,bg=FRAME)
@@ -60,12 +61,12 @@ class ComparisonTab(tk.Frame):
             buttons.pack(fill='x')
             ttk.Button(buttons,text=f'Load plan {slot+1}',command=lambda i=slot:self.load(i)).pack(side='left')
             ttk.Button(buttons,text='Clear',width=5,command=lambda i=slot:self.clear(i)).pack(side='right')
-            name=tk.Label(frame,text='No DVH loaded',bg='white',fg=INK,font=('Arial',10),justify='left',anchor='w',wraplength=235,height=3)
+            name=tk.Label(frame,text='No DVH loaded',bg='white',fg=INK,font=(FONT,10),justify='left',anchor='w',wraplength=235,height=3)
             name.pack(fill='x')
             self.names.append(name)
         frame=tk.Frame(self,bg=FRAME)
         frame.pack(fill='both',expand=True,padx=12,pady=4)
-        tk.Label(frame,text='PLAN DOSE / EQD2',bg=FRAME,fg='white',font=('Arial',12,'bold'),anchor='w').pack(fill='x',pady=(3,3))
+        tk.Label(frame,text='PLAN DOSE / EQD2',bg=FRAME,fg='white',font=(FONT,12,'bold'),anchor='w').pack(fill='x',pady=(3,3))
         self.header=tk.Frame(frame,bg=HEADER)
         self.header.pack(fill='x')
         self.head_grid=tk.Frame(self.header,bg=HEADER)
@@ -83,6 +84,7 @@ class ComparisonTab(tk.Frame):
         def resize(event):
             self.canvas.itemconfigure(win,width=event.width)
             proportions=[240,130,130,130,130,100,110,185]
+            if self.cylinder: proportions=[240,130,130,130,130,0,0,0]
             widths=[int(event.width*w/sum(proportions)) for w in proportions]
             widths[0]+=event.width-sum(widths)
             for grid in (self.grid_frame,self.head_grid):
@@ -94,7 +96,7 @@ class ComparisonTab(tk.Frame):
             self.headings.append(self.cell(self.head_grid,0,col,text,HEADER,True))
         row=0
         for title,key,metrics in self.app.course.structures:
-            header=tk.Label(self.grid_frame,text=title,bg=HEADER,fg=INK,font=('Arial',10,'bold'),anchor='w',padx=7,pady=0)
+            header=tk.Label(self.grid_frame,text=title,bg=HEADER,fg=INK,font=(FONT,10,'bold'),anchor='w',padx=7,pady=0)
             header.grid(row=row,column=0,columnspan=8,sticky='nsew',pady=(8 if row else 0,2))
             row+=1
             for metric in metrics:
@@ -117,6 +119,10 @@ class ComparisonTab(tk.Frame):
                     self.cell(self.grid_frame,row,6,metric.hard,'#fafbfc')
                     self.best_cells[k]=self.cell(self.grid_frame,row,7,'—','white')
                     row+=1
+        if self.cylinder:
+            for grid in (self.head_grid,self.grid_frame):
+                for child in grid.winfo_children():
+                    if int(child.grid_info().get('column',0))>=5: child.grid_remove()
         def bind_wheel(widget):
             def scroll(event):
                 self.canvas.yview_scroll(-1 if event.delta>0 or event.num==4 else 1,'units')
@@ -128,12 +134,12 @@ class ComparisonTab(tk.Frame):
         bind_wheel(outer)
         footer=tk.Frame(self,bg=BG)
         footer.pack(fill='x',padx=12,pady=(3,8))
-        tk.Label(footer,text='Best vs goal: per metric only; meeting the goal ties. No overall plan ranking.',bg=BG,fg='#505b67',font=('Arial',10)).pack(side='left')
+        tk.Label(footer,text='Total BT EQD2 per plan. No PORTEC-4 constraints are defined.' if self.cylinder else 'Best vs goal: per metric only; meeting the goal ties. No overall plan ranking.',bg=BG,fg='#505b67',font=(FONT,10)).pack(side='left')
         ttk.Button(footer,text='Export comparison PDF',command=self.export_report).pack(side='right')
 
     @staticmethod
     def cell(parent,row,col,text,bg,bold=False):
-        label=tk.Label(parent,text=text,bg=bg,fg=INK,font=('Arial',10,'bold' if bold else 'normal'),anchor='w' if col==0 else 'center',padx=5,pady=0,width=1)
+        label=tk.Label(parent,text=text,bg=bg,fg=INK,font=(FONT,10,'bold' if bold else 'normal'),anchor='w' if col==0 else 'center',padx=5,pady=0,width=1)
         label.grid(row=row,column=col,sticky='nsew',padx=(0,1),pady=(0,1))
         return label
 
@@ -218,7 +224,7 @@ class ComparisonTab(tk.Frame):
         if not self.commit_prescription() or not self.app.commit_inputs():
             return
         from embrace_pdf import export_comparison_pdf
-        path=filedialog.asksaveasfilename(title='Export plan comparison',initialfile='EMBRACE2_Plan_Comparison.pdf',defaultextension='.pdf',filetypes=[('PDF report','*.pdf')])
+        path=filedialog.asksaveasfilename(title='Export plan comparison',initialfile=('PORTEC4' if self.app.course.mode=='Cylinder' else 'EMBRACE2')+'_Plan_Comparison.pdf',defaultextension='.pdf',filetypes=[('PDF report','*.pdf')])
         if path:
             try:
                 export_comparison_pdf(self.model,self.settings(),path)

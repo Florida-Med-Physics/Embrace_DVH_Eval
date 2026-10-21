@@ -27,3 +27,6 @@ class CylinderTests(unittest.TestCase):
                 xml=z.read('xl/worksheets/sheet1.xml').decode()
                 self.assertIn('PORTEC-4',xml);self.assertNotIn('EBRT',xml)
                 self.assertIn('29.75',xml);self.assertIn('>CTV<',xml)
+            from embrace_pdf import export_comparison_pdf
+            pdf=Path(tmp)/'comparison.pdf';export_comparison_pdf(plans,c,pdf)
+            self.assertTrue(pdf.read_bytes().startswith(b'%PDF-'))
