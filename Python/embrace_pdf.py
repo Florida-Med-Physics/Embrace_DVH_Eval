@@ -73,9 +73,9 @@ def export_pdf(course, output, fraction=0, worksheet_only=False):
         ]+list(extra)))
         return table
     story=[]
-    for page,(heading,definitions) in enumerate((('TARGETS',STRUCTURES[:3]),('ORGANS AT RISK',STRUCTURES[3:]))):
+    for page,(heading,definitions) in enumerate(course.sections):
         if page: story.append(PageBreak())
-        story += [p('EMBRACE-2 | PHYSICAL - BIOLOGICAL DOCUMENTATION OF HDR BT',title),Spacer(1,5),
+        story += [p(course.title+' | PHYSICAL - BIOLOGICAL DOCUMENTATION OF HDR BT',title),Spacer(1,5),
                   p(f'PATIENT: {course.patient or "Not specified"}    |    ID: {course.patient_id or "Not specified"}'),
                   p(f'BRACHYTHERAPY: {fmt(course.prescription_gy)} Gy x {course.count} fractions    |    Prescription BT EQD2 (a/b 10): {fmt(course.prescription_eqd2())} Gy'),Spacer(1,7)]
         prior=[['EXTERNAL BEAM THERAPY','Value','TUMOUR EQD2 [Gy]\n(a/b = 10)','OAR EQD2 [Gy]\n(a/b = 3)'],
@@ -83,7 +83,9 @@ def export_pdf(course, output, fraction=0, worksheet_only=False):
                ['Fractions without central shield',str(course.prior_fractions),fmt(course.baseline(10)),fmt(course.baseline(3))],
                ['Total dose [Gy]',fmt(course.dose_per_fx*course.prior_fractions),fmt(course.baseline(10)),fmt(course.baseline(3))]]
         prior[0]=[p(v,head) for v in prior[0]]
-        if page==0:
+        if course.mode=='Cylinder':
+            pass
+        elif page==0:
             story += [style_table(Table(prior,colWidths=[300,100,160,160]),[('BACKGROUND',(1,1),(1,2),blue)]),Spacer(1,8)]
         else:
             story += [p(f'EXTERNAL BEAM THERAPY: {fmt(course.dose_per_fx)} Gy x {course.prior_fractions} | EQD2 tumour: {fmt(course.baseline(10))} Gy | EQD2 OAR: {fmt(course.baseline(3))} Gy'),Spacer(1,8)]
@@ -114,6 +116,12 @@ def export_pdf(course, output, fraction=0, worksheet_only=False):
                     rows.append([metric.label.replace('[Gy]',f'EQD2{metric.ab} [Gy]')]+[fmt(v) for v in values]+[fmt(bt),fmt(course.total(k)),metric.goal,metric.hard])
                     r=len(rows)-1
                     commands += [('BACKGROUND',(n+2,r),(n+2,r),STATUS[status(course.total(k),metric)]),('FONTNAME',(n+1,r),(n+2,r),'Helvetica-Bold')]
+        if course.mode=='Cylinder':
+            rows=[row[:n+2] for row in rows]
+            widths=[720-65*n-100]+[65]*n+[100]
+            commands=[command for command in commands
+                      if not (isinstance(command[1],tuple) and
+                              (command[1][0]>n+1 or command[2][0]>n+1))]
         section=Table([[heading]],colWidths=[720])
         section.setStyle(TableStyle([('BACKGROUND',(0,0),(-1,-1),INK),('TEXTCOLOR',(0,0),(-1,-1),colors.white),('FONTNAME',(0,0),(-1,-1),'Helvetica-Bold'),('FONTSIZE',(0,0),(-1,-1),10),('TOPPADDING',(0,0),(-1,-1),4),('BOTTOMPADDING',(0,0),(-1,-1),4)]))
         story += [section,style_table(Table(rows,colWidths=widths,repeatRows=4,hAlign='LEFT'),commands)]
@@ -126,13 +134,13 @@ def export_pdf(course, output, fraction=0, worksheet_only=False):
     def footer(canvas,doc):
         canvas.setFont('Helvetica',7)
         canvas.setFillColor(INK)
-        draw_trial_reference(canvas,792)
-        canvas.drawString(36,10,f'UFHPTI | EMBRACE EQD2 | {timestamp}')
+        if course.mode=='GYN': draw_trial_reference(canvas,792)
+        canvas.drawString(36,10,f'UFHPTI | {course.title if course.mode=="Cylinder" else "EMBRACE EQD2"} | {timestamp}')
         canvas.drawRightString(756,10,f'Page {doc.page}')
     fd,temp=tempfile.mkstemp(suffix='.pdf',dir=output.parent)
     os.close(fd)
     try:
-        doc=SimpleDocTemplate(temp,pagesize=(792,612),leftMargin=30,rightMargin=30,topMargin=18,bottomMargin=48,title='EMBRACE-2 EQD2 worksheet',author='EMBRACE EQD2')
+        doc=SimpleDocTemplate(temp,pagesize=(792,612),leftMargin=30,rightMargin=30,topMargin=18,bottomMargin=48,title=course.title+' worksheet',author='EMBRACE EQD2')
         doc.build(story,onFirstPage=footer,onLaterPages=footer)
         os.replace(temp,output)
     finally:
@@ -153,13 +161,15 @@ def export_comparison_pdf(comparison, course, output):
     scenarios=[comparison.scenario(i,course) for i in range(4)]
     first=next(plan for plan in comparison.plans if plan)
     story=[]
-    for page,(heading,definitions) in enumerate((('TARGETS',STRUCTURES[:3]),('ORGANS AT RISK',STRUCTURES[3:]))):
+    for page,(heading,definitions) in enumerate(course.sections):
         if page:
             story.append(PageBreak())
-        story += [p('EMBRACE-2 | Plan comparison',title),Spacer(1,5),
+        story += [p(course.title+' | Plan comparison',title),Spacer(1,5),
                   p(f'Patient: {first.patient or "Not specified"}    |    Patient ID: {first.patient_id or "Not specified"}'),
                   p(f'Prescription: {fmt(course.prescription_gy)} Gy x {course.count} fractions. Prior RT: {fmt(course.dose_per_fx)} Gy x {course.prior_fractions}.'),
                   p(f'Prior RT EQD2: {fmt(course.baseline(10))} Gy (a/b 10) | {fmt(course.baseline(3))} Gy (a/b 3).'),Spacer(1,7)]
+        if course.mode=='Cylinder':
+            story=story[:-3]+[p(f'Prescription: {fmt(course.prescription_gy)} Gy x {course.count} fractions. Total BT EQD2.'),Spacer(1,7)]
         if page==0:
             for i,plan in enumerate(comparison.plans):
                 if plan:
@@ -188,13 +198,13 @@ def export_comparison_pdf(comparison, course, output):
                     commands.append(('LINEBELOW',(0,r),(-1,r),.2,colors.HexColor('#e3e6e9')))
         table=Table(rows,colWidths=[144,62,62,62,62,62,74],repeatRows=1,hAlign='LEFT')
         table.setStyle(TableStyle(commands+[('GRID',(0,0),(-1,-1),.25,colors.black)]))
-        story += [table,Spacer(1,7),p('Physical dose rows: one fraction. Total EQD2 rows: all fractions + prior RT.',small),
+        story += [table,Spacer(1,7),p('Physical dose rows: one fraction. Total EQD2 rows: all BT fractions.' if course.mode=='Cylinder' else 'Physical dose rows: one fraction. Total EQD2 rows: all fractions + prior RT.',small),
                   p('Blank metrics are not included. Absolute doses stay unchanged; % doses use prescription. Values display one decimal.',small)]
     timestamp=datetime.now().strftime('%Y-%m-%d %H:%M')
     def footer(canvas,doc):
-        draw_letterhead(canvas)
+        if course.mode=='GYN': draw_letterhead(canvas)
         canvas.setFont('Helvetica',8)
-        draw_trial_reference(canvas,612)
+        if course.mode=='GYN': draw_trial_reference(canvas,612)
         canvas.drawString(42,10,f'UFHPTI | Plan comparison | Exported {timestamp}')
         canvas.drawRightString(570,10,f'Page {doc.page}')
     fd,temp=tempfile.mkstemp(suffix='.pdf',dir=output.parent)

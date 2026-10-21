@@ -2,7 +2,7 @@
 
 No GUI or third-party dependencies. Fractions use zero-based indexes internally.
 """
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 import math
 import os
@@ -31,6 +31,10 @@ STRUCTURES = (
     ('INTESTINES OR BOWEL', 'bowel', (Metric('volume', 'Volume [cc]', 78), Metric('D0p1', 'D0.1cc [Gy]', 79, 3), Metric('D2', 'D2cc [Gy]', 81, 3, '<70', '<75'))),
 )
 METRICS = {f'{key}_{m.key}': m for _, key, metrics in STRUCTURES for m in metrics}
+
+
+CYLINDER_STRUCTURES = (('CTV','ctvhr',tuple(replace(m,goal='',hard='') for m in STRUCTURES[1][2])),) + tuple(
+    (name,key,tuple(replace(m,goal='',hard='') for m in metrics)) for name,key,metrics in STRUCTURES[3:])
 
 
 def number(value):
@@ -160,7 +164,7 @@ def file_creation_date(path):
     return datetime.fromtimestamp(timestamp).date().isoformat() if timestamp is not None else ''
 
 
-def parse_dvh(path, prescription_gy=None, volumes_cc=None):
+def parse_dvh(path, prescription_gy=None, volumes_cc=None, mode="GYN"):
     """Read indexed or two-column cumulative DVHs with explicit axis units.
 
     Percent dose uses the user-selected per-fraction prescription. Percent
@@ -200,6 +204,10 @@ def parse_dvh(path, prescription_gy=None, volumes_cc=None):
     for name, body in zip(parts[1::2], parts[2::2]):
         name = name.strip()
         key = structure_key(name)
+        if mode == 'Cylinder':
+            compact=re.sub(r'[^a-z0-9]','',re.sub(r'(?:fx|fraction|frac|plan)\s*[_ -]*\d+','',name.casefold()))
+            if compact in ('ctv','clinicaltargetvolume') or key=='ctvhr': key='ctvhr'
+            elif key in ('ctvir','gtvres'): key=None
         rows = [(float(d), float(v)) for d,v in re.findall(r'^[ \t]*(?:\d+[ \t]+)?'+numeric+r'[ \t]+'+numeric+r'[ \t]*\r?$', body, re.M)]
         if not key or not rows:
             ignored.append(name)
@@ -253,6 +261,7 @@ def parse_dvh(path, prescription_gy=None, volumes_cc=None):
 @dataclass
 class Course:
     count: int = 4
+    mode: str = "GYN"
     prescription_gy: float = 7.0
     dose_per_fx: float = 1.8
     prior_fractions: int = 25
@@ -267,6 +276,24 @@ class Course:
     screenshots: list = field(default_factory=lambda: [None]*5)
     relative_doses: list = field(default_factory=lambda: [{} for _ in range(5)])
 
+    @classmethod
+    def for_mode(cls, mode):
+        if mode not in ('GYN','Cylinder'): raise ValueError('Choose GYN or Cylinder.')
+        return cls(mode=mode,count=3 if mode=='Cylinder' else 4,
+                   prior_fractions=0 if mode=='Cylinder' else 25,
+                   dose_per_fx=0 if mode=='Cylinder' else 1.8)
+
+    @property
+    def structures(self): return CYLINDER_STRUCTURES if self.mode=='Cylinder' else STRUCTURES
+
+    @property
+    def title(self): return 'PORTEC-4 EQD2' if self.mode=='Cylinder' else 'EMBRACE-2'
+
+    @property
+    def sections(self):
+        return (('TARGETS',self.structures[:1] if self.mode=='Cylinder' else self.structures[:3]),
+                ('ORGANS AT RISK',self.structures[1:] if self.mode=='Cylinder' else self.structures[3:]))
+
     def set_prescription(self, dose):
         dose = positive_dose(dose)
         self.prescription_gy = dose
@@ -278,7 +305,7 @@ class Course:
         return self.count * eqd2(self.prescription_gy,ab)
 
     def baseline(self, ab):
-        return self.prior_fractions * eqd2(self.dose_per_fx, ab)
+        return 0 if self.mode=='Cylinder' else self.prior_fractions * eqd2(self.dose_per_fx, ab)
 
     def total(self, key):
         doses = [v[key] for v in self.values[:self.count] if v.get(key) is not None]
@@ -335,7 +362,7 @@ class Course:
     def load(self, fx, path, volumes_cc=None):
         if not 0 <= fx < self.count:
             raise ValueError('Inactive fraction.')
-        parsed = parse_dvh(path,self.prescription_gy,volumes_cc)
+        parsed = parse_dvh(path,self.prescription_gy,volumes_cc,mode=self.mode)
         # Validate both fields before changing any state.
         for label, current, new in [('Patient', self.patient, parsed.patient), ('Patient ID', self.patient_id, parsed.patient_id)]:
             if current and new and current.casefold() != new.casefold():
@@ -366,7 +393,7 @@ class PlanComparison:
     def load(self, slot, path, course, volumes_cc=None):
         if not 0 <= slot < 4:
             raise ValueError('Choose plan 1 through 4.')
-        parsed = parse_dvh(path,course.prescription_gy,volumes_cc)
+        parsed = parse_dvh(path,course.prescription_gy,volumes_cc,mode=course.mode)
         others = [plan for i, plan in enumerate(self.plans) if plan is not None and i != slot]
         references = [(course.patient, course.patient_id)] + [(p.patient, p.patient_id) for p in others]
         for patient, patient_id in references:
@@ -381,7 +408,7 @@ class PlanComparison:
         parsed = self.plans[slot]
         if parsed is None:
             return None
-        scenario = Course(count=course.count, prescription_gy=course.prescription_gy, dose_per_fx=course.dose_per_fx,
+        scenario = Course(mode=course.mode,count=course.count, prescription_gy=course.prescription_gy, dose_per_fx=course.dose_per_fx,
                           prior_fractions=course.prior_fractions,
                           patient=parsed.patient, patient_id=parsed.patient_id)
         for fx in range(course.count):

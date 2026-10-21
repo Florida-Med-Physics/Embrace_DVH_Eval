@@ -35,6 +35,7 @@ def replace_cell(xml, ref, value):
 
 
 def export_workbook(course, template, output):
+    if course.mode=='Cylinder': return export_cylinder_workbook(course,output)
     template, output = Path(template), Path(output)
     if template.resolve() == output.resolve():
         raise ValueError('Choose a different output file; the template must be preserved.')
@@ -75,3 +76,50 @@ def export_workbook(course, template, output):
     finally:
         if temporary and os.path.exists(temporary):
             os.unlink(temporary)
+
+
+def export_cylinder_workbook(course, output):
+    """Standalone BT-only worksheet; the EMBRACE template stays untouched."""
+    from embrace_core import eqd2
+    output=Path(output)
+    if not any(course.values[:course.count]): raise ValueError('No fraction values to export.')
+    n=course.count
+    rows=[['PORTEC-4 EQD2'],['Patient',course.patient,'ID',course.patient_id],
+          ['Prescription [Gy / Fx]',course.prescription_gy,'Fractions',n],
+          ['Structure / dose parameter']+[f'Fx {i+1}' for i in range(n)]+['Total BT EQD2 [Gy]']]
+    input_rows=set();headers={1,4}
+    for title,key,metrics in course.structures:
+        rows.append([title]);headers.add(len(rows))
+        for metric in metrics:
+            k=f'{key}_{metric.key}'
+            rows.append([metric.label]+[course.values[i].get(k) for i in range(n)])
+            if metric.ab:
+                input_rows.add(len(rows))
+                rows.append([metric.label.replace('[Gy]',f'EQD2{metric.ab} [Gy]')]+[
+                    eqd2(course.values[i][k],metric.ab) if course.values[i].get(k) is not None else None
+                    for i in range(n)]+[course.total(k)])
+    data=[]
+    for r,row in enumerate(rows,1):
+        cells=[]
+        for c,value in enumerate(row):
+            ref=f'{chr(65+c)}{r}'
+            style=1 if r in headers else (2 if r in input_rows and c>0 else 0)
+            if value is None: cells.append(f'<c r="{ref}" s="{style}"/>')
+            elif isinstance(value,(int,float)):cells.append(f'<c r="{ref}" s="{style}"><v>{value}</v></c>')
+            else:cells.append(f'<c r="{ref}" s="{style}" t="inlineStr"><is><t>{escape(str(value))}</t></is></c>')
+        data.append(f'<row r="{r}">'+''.join(cells)+'</row>')
+    files={
+      '[Content_Types].xml':'<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/></Types>',
+      '_rels/.rels':'<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>',
+      'xl/workbook.xml':f'<workbook xmlns="{NS}" xmlns:r="{REL}"><sheets><sheet name="PORTEC-4 EQD2" sheetId="1" r:id="rId1"/></sheets></workbook>',
+      'xl/_rels/workbook.xml.rels':f'<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="{REL}/worksheet" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Type="{REL}/styles" Target="styles.xml"/></Relationships>',
+      'xl/styles.xml':f'<styleSheet xmlns="{NS}"><fonts count="1"><font><sz val="11"/><name val="Arial"/></font></fonts><fills count="4"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FFE6E9ED"/></patternFill></fill><fill><patternFill patternType="solid"><fgColor rgb="FFD9EFF7"/></patternFill></fill></fills><borders count="1"><border/></borders><cellStyleXfs count="1"><xf/></cellStyleXfs><cellXfs count="3"><xf fontId="0" fillId="0" borderId="0" xfId="0"/><xf fontId="0" fillId="2" borderId="0" xfId="0" applyFill="1"/><xf fontId="0" fillId="3" borderId="0" xfId="0" applyFill="1"/></cellXfs></styleSheet>',
+      'xl/worksheets/sheet1.xml':f'<worksheet xmlns="{NS}"><cols><col min="1" max="1" width="32" customWidth="1"/><col min="2" max="7" width="22" customWidth="1"/></cols><sheetData>'+''.join(data)+'</sheetData></worksheet>'}
+    fd,temp=tempfile.mkstemp(suffix='.xlsx',dir=output.parent);os.close(fd)
+    try:
+        with zipfile.ZipFile(temp,'w',zipfile.ZIP_DEFLATED) as archive:
+            for name,xml in files.items():archive.writestr(name,xml)
+        os.replace(temp,output)
+    finally:
+        if os.path.exists(temp):os.unlink(temp)
+    return ['PORTEC-4 EQD2']

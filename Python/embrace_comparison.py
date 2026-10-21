@@ -23,7 +23,7 @@ class ComparisonTab(tk.Frame):
         self.best_cells={}
         top=tk.Frame(self,bg=FRAME)
         top.pack(fill='x',padx=12,pady=(12,10))
-        tk.Label(top,text='EMBRACE-2  Plan Comparison',bg=FRAME,fg='white',font=('Arial',22,'bold')).pack(side='left')
+        tk.Label(top,text=app.course.title+'  Plan Comparison',bg=FRAME,fg='white',font=('Arial',22,'bold')).pack(side='left')
         self.patient=tk.Label(top,bg=FRAME,fg='white',font=('Arial',10))
         self.patient.pack(side='right')
         control=tk.Frame(self,bg=BG,padx=8,pady=6)
@@ -47,6 +47,7 @@ class ComparisonTab(tk.Frame):
         self.summary.pack(side='left',padx=10)
         ttk.Button(control,text='Clear comparison',command=self.clear_all).pack(side='right')
         self.instructions=tk.Label(self,text='One TXT per plan. Each dose distribution is repeated for the selected fraction count, then prior RT is added.',bg=FRAME,fg='white',font=('Arial',10),anchor='w')
+        if app.course.mode=='Cylinder': self.instructions.configure(text='One TXT per plan. Each dose distribution is repeated for the selected fraction count; BT only.')
         self.instructions.pack(fill='x',padx=12,pady=3)
         cards=tk.Frame(self,bg=FRAME)
         cards.pack(fill='x',padx=12,pady=4)
@@ -92,7 +93,7 @@ class ComparisonTab(tk.Frame):
         for col,text in enumerate(['Structure / metric','Plan 1','Plan 2','Plan 3','Plan 4','Goal / soft','Tolerance / hard','Best vs goal']):
             self.headings.append(self.cell(self.head_grid,0,col,text,HEADER,True))
         row=0
-        for title,key,metrics in STRUCTURES:
+        for title,key,metrics in self.app.course.structures:
             header=tk.Label(self.grid_frame,text=title,bg=HEADER,fg=INK,font=('Arial',10,'bold'),anchor='w',padx=7,pady=0)
             header.grid(row=row,column=0,columnspan=8,sticky='nsew',pady=(8 if row else 0,2))
             row+=1
@@ -158,13 +159,14 @@ class ComparisonTab(tk.Frame):
     def refresh(self):
         c=self.settings()
         self.summary.configure(text=f'Rx BT EQD2₁₀: {fmt(c.prescription_eqd2())} Gy | Prior RT: {fmt(c.dose_per_fx)} x {c.prior_fractions} Gy')
+        if c.mode=='Cylinder': self.summary.configure(text=f'Rx BT EQD2₁₀: {fmt(c.prescription_eqd2())} Gy')
         first=next((p for p in self.model.plans if p),None)
         self.patient.configure(text=f'Patient: {first.patient or "—"} | ID: {first.patient_id or "—"}' if first else '')
         for slot,parsed in enumerate(self.model.plans):
             self.names[slot].configure(text=self.model.files[slot] if parsed else 'No DVH loaded')
             self.headings[slot+1].configure(text=f'Plan {slot+1}: {self.model.files[slot]}' if parsed else f'Plan {slot+1}',wraplength=130)
             scenario=self.model.scenario(slot,c)
-            for _,key,metrics in STRUCTURES:
+            for _,key,metrics in self.app.course.structures:
                 for metric in metrics:
                     k=f'{key}_{metric.key}'
                     value=scenario.values[0].get(k) if scenario else None
@@ -177,7 +179,7 @@ class ComparisonTab(tk.Frame):
 
 
         active={slot:self.model.scenario(slot,c) for slot,plan in enumerate(self.model.plans) if plan}
-        for _,key,metrics in STRUCTURES:
+        for _,key,metrics in self.app.course.structures:
             for metric in metrics:
                 if not metric.ab:
                     continue

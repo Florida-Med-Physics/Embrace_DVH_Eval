@@ -42,6 +42,9 @@ class MetricTable(tk.Frame):
         self.canvas.bind('<Configure>',self.resize)
         headings = ['Structure / dose parameter','Fx 1','Fx 2','Fx 3','Fx 4','Fx 5','BT + EBRT\nEQD2 [Gy]',
                     'Planning\ngoal' if target else 'Soft\nconstraint','Tolerance' if target else 'Hard\nconstraint']
+        if app.course.mode=='Cylinder':
+            headings[6]='Total BT\nEQD2 [Gy]'
+            headings[7:]=['','']
         self.headings=[]
         for col,text in enumerate(headings):
             label=self.cell(self.head_grid,0,col,text,HEADER,bold=True)
@@ -80,6 +83,11 @@ class MetricTable(tk.Frame):
                     self.cell(self.grid_frame,row,7,metric.goal,'#fafbfc')
                     self.cell(self.grid_frame,row,8,metric.hard,'#fafbfc')
                     row+=1
+        self.cylinder=app.course.mode=='Cylinder'
+        if self.cylinder:
+            for grid in (self.head_grid,self.grid_frame):
+                for child in grid.winfo_children():
+                    if int(child.grid_info().get('column',0))>=7: child.grid_remove()
         self.bind_wheel(outer)
 
     @staticmethod
@@ -93,6 +101,7 @@ class MetricTable(tk.Frame):
         # Identical pixel widths ensure header/body alignment at any window size.
         self.canvas.itemconfigure(self.window,width=event.width)
         proportions=[225,70,70,70,70,70,135,105,105]
+        if self.cylinder: proportions=[225,70,70,70,70,70,135,0,0]
         widths=[int(event.width*w/sum(proportions)) for w in proportions]
         widths[0]+=event.width-sum(widths)
         for grid in (self.head_grid,self.grid_frame):
@@ -123,6 +132,34 @@ class App(tk.Tk):
         self.minsize(1020,680)
         self.configure(bg=BG)
         apply_theme(self)
+        self.mode_courses={'GYN':self.course}
+        self.mode_comparisons={}
+        chooser=tk.Frame(self,bg=BG);chooser.pack(fill='x',padx=12,pady=6)
+        tk.Label(chooser,text='Treatment type',bg=BG,fg=INK).pack(side='left',padx=5)
+        self.mode_var=tk.StringVar(value='GYN')
+        box=ttk.Combobox(chooser,textvariable=self.mode_var,values=['GYN','Cylinder'],state='readonly',width=12)
+        box.pack(side='left');box.bind('<<ComboboxSelected>>',self.change_mode)
+        self.build_pages()
+
+    def change_mode(self,event=None):
+        mode=self.mode_var.get()
+        if mode==self.course.mode: return
+        if not self.commit_inputs(): self.mode_var.set(self.course.mode);return
+        self.mode_courses[self.course.mode]=self.course
+        self.mode_comparisons[self.course.mode]=(self.comparison.model,self.comparison.count.get(),self.comparison.prescription_gy)
+        self.notebook.unbind('<<NotebookTabChanged>>')
+        self.notebook.destroy()
+        del self.comparison
+        self.course=self.mode_courses.setdefault(mode,Course.for_mode(mode))
+        self.build_pages()
+        if mode in self.mode_comparisons:
+            model,count,rx=self.mode_comparisons[mode]
+            self.comparison.model=model;self.comparison.count.set(count);self.comparison.prescription_gy=rx
+            self.comparison.prescription_var.set(fmt(rx));self.comparison.prescription_displayed=fmt(rx)
+            self.comparison.refresh()
+
+    def build_pages(self):
+        self.title(self.course.title+" Excel Autogenerator")
         self.notebook=ttk.Notebook(self)
         self.notebook.pack(fill='both',expand=True)
         self.dashboard=tk.Frame(self.notebook,bg=FRAME)
@@ -132,13 +169,13 @@ class App(tk.Tk):
         self.status_text=tk.StringVar(value='Blue cells: enter physical dose. Volumes come from the DVH.')
         top=tk.Frame(self.dashboard,bg=FRAME)
         top.pack(fill='x',padx=12,pady=(12,10))
-        tk.Label(top,text='EMBRACE-2  EQD2 Excel Autogenerator',bg=FRAME,fg='white',font=('Arial',22,'bold')).pack(side='left')
+        tk.Label(top,text=self.course.title+'  Excel Autogenerator',bg=FRAME,fg='white',font=('Arial',22,'bold')).pack(side='left')
         tk.Label(top,text='UFHPTI',bg=FRAME,fg='#fa4a00',font=('Arial',12,'bold')).pack(side='right')
         controls=tk.Frame(self.dashboard,bg=BG,padx=8,pady=6)
         controls.pack(fill='x',padx=12,pady=3)
         self.patient=tk.Label(controls,bg=BG,fg=INK,font=('Arial',10),anchor='w')
         self.patient.pack(side='left',fill='x',expand=True)
-        self.count=tk.StringVar(value='4 Fx')
+        self.count=tk.StringVar(value=f'{self.course.count} Fx')
         count=ttk.Combobox(controls,textvariable=self.count,values=['3 Fx','4 Fx','5 Fx'],width=5,state='readonly')
         count.pack(side='left',padx=(0,8))
         count.bind('<<ComboboxSelected>>',self.change_count)
@@ -187,7 +224,8 @@ class App(tk.Tk):
         self.show_files=tk.BooleanVar(value=True)
         self.files=tk.Label(self.dashboard,text='',bg=FRAME,fg='white',anchor='w',justify='left',wraplength=1160,font=('Arial',9))
         self.files.pack(fill='x',padx=12,pady=2)
-        tk.Label(self.dashboard,text='PRIOR RT / EBRT FRACTIONATION',bg=FRAME,fg='white',font=('Arial',12,'bold'),anchor='w').pack(fill='x',padx=12,pady=(6,3))
+        prior_heading=tk.Label(self.dashboard,text='PRIOR RT / EBRT FRACTIONATION',bg=FRAME,fg='white',font=('Arial',12,'bold'),anchor='w')
+        prior_heading.pack(fill='x',padx=12,pady=(6,3))
         self.prior_frame=tk.Frame(self.dashboard,bg='#d3d8dc')
         self.prior_frame.pack(fill='x',padx=12,pady=(0,6))
         for col,title in enumerate(('Parameter','Value','EQD2 [Gy] (α/β = 10)','EQD2 [Gy] (α/β = 3)')):
@@ -205,10 +243,12 @@ class App(tk.Tk):
                     entry.bind('<FocusOut>',self.edit_pending)
                 else:
                     self.prior_display[row,col]=MetricTable.cell(self.prior_frame,row,col,'','white')
+        if self.course.mode=='Cylinder':
+            prior_heading.pack_forget();self.prior_frame.pack_forget()
         body=tk.PanedWindow(self.dashboard,orient='vertical',bg=FRAME,sashwidth=8,bd=0)
         body.pack(fill='both',expand=True,padx=12,pady=(0,3))
         self.tables=[]
-        for title,definitions,target in [('TARGETS',STRUCTURES[:3],True),('ORGANS AT RISK',STRUCTURES[3:],False)]:
+        for title,definitions,target in [(title,definitions,title=='TARGETS') for title,definitions in self.course.sections]:
             table=MetricTable(body,self,title,definitions,target)
             body.add(table,minsize=230 if target else 160,stretch='always')
             self.tables.append(table)
@@ -222,7 +262,7 @@ class App(tk.Tk):
         self.notebook.add(self.comparison,text='Plan comparison')
         self.notebook.bind('<<NotebookTabChanged>>',lambda e:self.commit_inputs())
         self.refresh()
-        self.after(100,lambda:body.sash_place(0,0,int(body.winfo_height()*.58)))
+        self.after(100,lambda:body.sash_place(0,0,int(body.winfo_height()*.58)) if body.winfo_exists() else None)
 
     def label(self,text,size=11):
         label=tk.Label(self.dashboard,text=text,bg=FRAME,fg='white',anchor='w',justify='left',wraplength=1100,font=('Arial',size))
@@ -267,7 +307,7 @@ class App(tk.Tk):
         for table in self.tables:
             for fx in range(5):
                 table.headings[fx+1].configure(fg=INK if fx < c.count else '#929ba4',bg=BLUE if fx<c.count else INACTIVE)
-        for _,key,metrics in STRUCTURES:
+        for _,key,metrics in c.structures:
             for metric in metrics:
                 if not metric.ab:
                     continue
@@ -276,7 +316,7 @@ class App(tk.Tk):
                     value=c.values[fx].get(k)
                     self.cells[k,fx].configure(text=fmt(eqd2(value,metric.ab)) if value is not None and fx<c.count else '',bg='#fafbfc' if fx<c.count else INACTIVE,fg=INPUT_INK if fx<c.count else MUTED)
                 total=c.total(k)
-                result=status(total,metric)
+                result='neutral' if c.mode=='Cylinder' else status(total,metric)
                 self.totals[k].configure(text=fmt(total),bg='white' if result=='neutral' else COLORS[result],fg=INPUT_INK)
 
         if hasattr(self,'comparison'):
@@ -344,7 +384,8 @@ class App(tk.Tk):
 
     def clear(self):
         if messagebox.askyesno('Clear Dashboard','Clear all brachytherapy values and reset prior RT?',default='no',parent=self):
-            self.course=Course(count=self.course.count)
+            self.course=Course.for_mode(self.course.mode)
+            self.count.set(f'{self.course.count} Fx')
             self.refresh()
             self.status_text.set('Dashboard cleared.')
 
@@ -358,7 +399,7 @@ class App(tk.Tk):
             template=filedialog.askopenfilename(title='Choose EQD2 template',filetypes=[('Excel workbook','*.xlsx')])
         if not template:
             return
-        output=filedialog.asksaveasfilename(title='Export Excel',initialfile='EMBRACE2_Current_Display.xlsx',defaultextension='.xlsx',filetypes=[('Excel workbook','*.xlsx')])
+        output=filedialog.asksaveasfilename(title='Export Excel',initialfile=('PORTEC4' if self.course.mode=='Cylinder' else 'EMBRACE2')+'_Current_Display.xlsx',defaultextension='.xlsx',filetypes=[('Excel workbook','*.xlsx')])
         if not output:
             return
         try:
@@ -397,10 +438,10 @@ class App(tk.Tk):
             if absent: missing.append(f'Fx {fx+1}: '+', '.join(absent))
         if missing and not messagebox.askyesno('Missing report details','The following items are missing:\n\n'+'\n'.join(missing)+'\n\nExport without these items? Choose No to add them first.',default='no',parent=self):
             return
-        output=filedialog.asksaveasfilename(title='Export report and companion EMBRACE worksheet PDF' ,initialfile='EMBRACE2_EQD2_Report.pdf',defaultextension='.pdf',filetypes=[('PDF report','*.pdf')])
+        output=filedialog.asksaveasfilename(title='Export report and companion EMBRACE worksheet PDF' ,initialfile=('PORTEC4' if self.course.mode=='Cylinder' else 'EMBRACE2')+'_EQD2_Report.pdf',defaultextension='.pdf',filetypes=[('PDF report','*.pdf')])
         if not output:
             return
-        worksheet=Path(output).with_name(Path(output).stem+'_EMBRACE_Worksheet.pdf')
+        worksheet=Path(output).with_name(Path(output).stem+('_PORTEC4_Worksheet.pdf' if self.course.mode=='Cylinder' else '_EMBRACE_Worksheet.pdf'))
         if worksheet.exists() and not messagebox.askyesno('Replace worksheet PDF?',f'{worksheet.name} already exists. Replace it?',parent=self):
             return
         try:
@@ -474,6 +515,17 @@ def packaged_smoke_test(report_path):
             assert app.comparison.results['ctvhr_D90',0].cget('text')=='63.0'
             from embrace_pdf import export_comparison_pdf
             export_comparison_pdf(app.comparison.model,app.comparison.settings(),Path(folder)/'comparison.pdf')
+        saved=deepcopy(app.course)
+        app.mode_var.set('Cylinder');app.change_mode();app.update()
+        assert app.course.count==3 and app.course.baseline(10)==0
+        assert not app.prior_frame.winfo_ismapped()
+        assert 'gtvres_D98' not in app.totals and 'ctvir_D98' not in app.totals
+        app.inputs['ctvhr_D90',0][0].set('7');app.edit_pending();app.update()
+        assert app.totals['ctvhr_D90'].cget('bg')=='white'
+        assert app.tables[0].headings[6].cget('text')=='Total BT\nEQD2 [Gy]'
+        app.mode_var.set('GYN');app.change_mode();app.update()
+        assert app.course.values==saved.values and app.course.count==saved.count
+        assert app.prior_frame.winfo_ismapped()
         Path(report_path).write_text(json.dumps({'status':'passed','checks':['GUI','precision preservation','fixed headers','ESTRO dose/EQD2 row order','fraction controls','bundled Excel export','PDF export','four-plan comparison','comparison PDF']}))
     finally:
         app.destroy()
