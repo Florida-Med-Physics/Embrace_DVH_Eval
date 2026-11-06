@@ -10,7 +10,7 @@ class ROIMatchingTests(unittest.TestCase):
         for key,names in {
             'ctvhr':['CTVHR','CTV_HR_fx1','HR-CTV','High Risk CTV Fraction 2'],
             'ctvir':['IR_CTV','CTV intermediate risk','CTVIR'],
-            'gtvres':['Residual GTV','GTVres'],
+            'gtvres':['Residual GTV','GTVres','GTV','gtv_fx2','GTV-T','GTV primary','GTV_CTVHR'],
             'bladder':['Blader_fx1','BLADDER'],
             'rectum':['Rectun','Rectum'],
             'sigmoid':['Colon_Sigmoid_fx1','Sigmod'],
@@ -28,3 +28,14 @@ class ROIMatchingTests(unittest.TestCase):
             self.assertEqual(set(parsed.curves),{'ctvhr','ctvir','bladder','gtvres'})
             self.assertEqual(parsed.curves['ctvhr']['name'],'HR-CTV')
             self.assertEqual(parsed.metrics['ctvhr_D90'],7)
+
+    def test_plain_gtv_imports_metrics_and_curve(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path=Path(tmp)/'dvh.txt'
+            path.write_text('Dose [Gy]\nCumulative mode\nROI: GTV_fx2\n0 10\n7 9.8\n14 0\nROI: CTV\n0 10\n7 9\n14 0\n')
+            parsed=parse_dvh(path,7)
+            self.assertEqual(parsed.metrics['gtvres_D98'],7)
+            self.assertEqual(parsed.curves['gtvres']['name'],'GTV_fx2')
+            cylinder=parse_dvh(path,7,mode='Cylinder')
+            self.assertNotIn('gtvres',cylinder.curves)
+            self.assertIn('ctvhr',cylinder.curves)

@@ -127,6 +127,7 @@ class App(tk.Tk):
         apply_icon(self)
         self.course=Course()
         self._committing=False
+        self.dvh_folder=None
         self.title('EMBRACE-2 EQD2 Excel Autogenerator')
         # Fit the screen's height; cap width so table columns never stretch too wide.
         height=min(980,self.winfo_screenheight()-90)
@@ -371,10 +372,20 @@ class App(tk.Tk):
         self.refresh()
         self.status_text.set(f'{self.course.count}-fraction course selected.')
 
+    def choose_dvh_file(self,title):
+        options={}
+        if self.dvh_folder and Path(self.dvh_folder).is_dir():
+            options['initialdir']=self.dvh_folder
+        path=filedialog.askopenfilename(parent=self,title=title,
+            filetypes=[('DVH text files','*.txt'),('All files','*')],**options)
+        if path:
+            self.dvh_folder=str(Path(path).parent)
+        return path
+
     def load(self,fx):
         if not self.commit_inputs():
             return
-        path=filedialog.askopenfilename(title=f'Load Fx {fx+1} DVH TXT',filetypes=[('DVH text files','*.txt'),('All files','*')])
+        path=self.choose_dvh_file(f'Load Fx {fx+1} DVH TXT')
         if not path:
             return
         try:

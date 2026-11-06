@@ -200,7 +200,7 @@ class ComparisonTab(tk.Frame):
     def load(self,slot):
         if not self.commit_prescription() or not self.app.commit_inputs():
             return
-        path=filedialog.askopenfilename(title=f'Load plan {slot+1} DVH',filetypes=[('DVH text files','*.txt'),('All files','*')])
+        path=self.app.choose_dvh_file(f'Load plan {slot+1} DVH')
         if not path:
             return
         try:

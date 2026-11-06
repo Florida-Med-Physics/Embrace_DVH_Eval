@@ -95,6 +95,8 @@ def structure_key(name):
     name = name.strip().casefold()
     name = re.sub(r'(?:fx|fraction|frac|plan)\s*[_ -]*\d+', '', name)
     compact = re.sub('[^a-z0-9]', '', name)
+    if 'gtv' in compact:
+        return 'gtvres'
     matches = {key for key,aliases in ROI_ALIASES.items()
                if any(alias in compact for alias in aliases)}
     if len(matches)==1: return matches.pop()
