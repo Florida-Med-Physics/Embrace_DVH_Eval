@@ -99,6 +99,7 @@ def export_pdf(course, output, fraction=0, worksheet_only=False):
         rows.append(['Localization (MR / CT)']+[p(course.modalities[i] or 'Not set',small) for i in range(n)]+['']*4)
         rows.append(['Plan / source']+[p(course.files[i] or course.plans[i] or 'Manual',small) for i in range(n)]+['']*4)
         rows.append(['Date']+[p(course.dvhs[i].source_date or 'Unavailable',small) if course.dvhs[i] else p('Not imported',small) for i in range(n)]+['']*4)
+        rows.append(['CT date (manual)']+[p(course.ct_dates[i] or 'Not entered',small) for i in range(n)]+['']*4)
         for name,key,metrics in definitions:
             r=len(rows)
             rows.append([name]+['']*(n+4))
@@ -124,7 +125,15 @@ def export_pdf(course, output, fraction=0, worksheet_only=False):
                               (command[1][0]>n+1 or command[2][0]>n+1))]
         section=Table([[heading]],colWidths=[720])
         section.setStyle(TableStyle([('BACKGROUND',(0,0),(-1,-1),INK),('TEXTCOLOR',(0,0),(-1,-1),colors.white),('FONTNAME',(0,0),(-1,-1),'Helvetica-Bold'),('FONTSIZE',(0,0),(-1,-1),10),('TOPPADDING',(0,0),(-1,-1),4),('BOTTOMPADDING',(0,0),(-1,-1),4)]))
-        story += [section,style_table(Table(rows,colWidths=widths,repeatRows=4,hAlign='LEFT'),commands)]
+        story += [section,style_table(Table(rows,colWidths=widths,repeatRows=5,hAlign='LEFT'),commands)]
+    if course.mode=='GYN':
+        story += [PageBreak(),p('EMBRACE-2 | REFERENCE POINT DOSES',title),Spacer(1,8),
+                  p(f'PATIENT: {course.patient or "Not specified"} | ID: {course.patient_id or "Not specified"}'),
+                  p('Manually entered physical dose per fraction [Gy]. Blank values have not been entered.'),Spacer(1,8)]
+        rows=[['Reference point']+[f'Fx {i+1} [Gy]' for i in range(course.count)]]
+        for key,label in [('rectovaginal','Recto-vaginal'),('point_a_left','Point A left'),('point_a_right','Point A right'),('vaginal','Vaginal point')]:
+            rows.append([label]+[fmt(course.point_doses[i].get(key)) for i in range(course.count)])
+        story.append(style_table(Table(rows,colWidths=[240]+[480/course.count]*course.count,hAlign='LEFT')))
     from embrace_dvh_report import appendix
     front=[] if worksheet_only else appendix(course,fraction)
     if front:

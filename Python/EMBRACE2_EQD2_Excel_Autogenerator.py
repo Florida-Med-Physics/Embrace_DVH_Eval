@@ -224,6 +224,7 @@ class App(tk.Tk):
         ttk.Button(attachments,text='Attach screenshot',command=lambda:self.add_screenshot(False)).pack(side='left',padx=3)
         ttk.Button(attachments,text='Snip screen',command=lambda:self.add_screenshot(True)).pack(side='left',padx=3)
         ttk.Button(attachments,text='Remove image',command=self.remove_screenshot).pack(side='left',padx=3)
+        ttk.Button(attachments,text='CT dates / Points',command=self.report_details_popup).pack(side='left',padx=3)
         self.image_status=tk.Label(attachments,text='',bg=BG,fg=INK)
         self.image_status.pack(side='left',padx=6)
         self.show_files=tk.BooleanVar(value=True)
@@ -432,6 +433,37 @@ class App(tk.Tk):
 
     def set_modality(self,fx):
         self.course.modalities[fx]=self.modality_vars[fx].get()
+
+    def report_details_popup(self):
+        if not self.commit_inputs(): return
+        dialog=tk.Toplevel(self);dialog.title('CT dates and reference points')
+        dialog.transient(self);dialog.grab_set()
+        tk.Label(dialog,text='Manual entries for this course. DICOM import is not connected yet.').grid(row=0,column=0,columnspan=6,padx=10,pady=10)
+        labels=[('rectovaginal','Recto-vaginal [Gy]'),('point_a_left','Point A left [Gy]'),('point_a_right','Point A right [Gy]'),('vaginal','Vaginal point [Gy]')]
+        tk.Label(dialog,text='CT date (YYYY-MM-DD)').grid(row=2,column=0,padx=10)
+        dates=[];doses=[]
+        if self.course.mode=='GYN':
+            for row,(_,label) in enumerate(labels,3):tk.Label(dialog,text=label).grid(row=row,column=0,sticky='w',padx=10)
+        for fx in range(self.course.count):
+            tk.Label(dialog,text=f'Fx {fx+1}').grid(row=1,column=fx+1)
+            var=tk.StringVar(value=self.course.ct_dates[fx]);dates.append(var)
+            tk.Entry(dialog,textvariable=var,width=12,bg=BLUE,relief='flat',highlightthickness=0).grid(row=2,column=fx+1,padx=4,pady=4)
+            points={}
+            if self.course.mode=='GYN':
+                for row,(key,_) in enumerate(labels,3):
+                    value=self.course.point_doses[fx].get(key)
+                    var=tk.StringVar(value='' if value is None else str(value));points[key]=var
+                    tk.Entry(dialog,textvariable=var,width=12,bg=BLUE,relief='flat',highlightthickness=0).grid(row=row,column=fx+1,padx=4,pady=4)
+            doses.append(points)
+        def save():
+            try:
+                self.course.set_report_details([v.get() for v in dates],[{k:v.get() for k,v in row.items()} for row in doses])
+            except ValueError as error:
+                messagebox.showerror('Report details',str(error),parent=dialog);return
+            self.status_text.set('CT dates and reference points saved for the PDF report.')
+            dialog.destroy()
+        ttk.Button(dialog,text='Save',command=save).grid(row=8,column=self.course.count,padx=10,pady=12)
+        ttk.Button(dialog,text='Cancel',command=dialog.destroy).grid(row=8,column=0,padx=10,pady=12)
 
     def add_screenshot(self,capture):
         if not self.commit_inputs(): return

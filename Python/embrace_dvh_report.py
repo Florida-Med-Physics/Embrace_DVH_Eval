@@ -112,7 +112,7 @@ def appendix(course, fraction=0):
             report_rows=sorted(metric_rows(parsed,course.prescription_gy),key=lambda r:(r[0].casefold(),r[4]))
             for name,metric,*values in report_rows:
                 data.append([p(name)]+['' if value is None else f'{value:.2f}' for value in values])
-            table=Table(data,colWidths=[280,110,110,110,110],repeatRows=1)
+            table=Table(data,colWidths=[160,90,100,90,90],repeatRows=1,hAlign='LEFT')
             commands=[('FONTNAME',(0,0),(-1,-1),'Helvetica'),('FONTSIZE',(0,0),(-1,-1),7.5),
                       ('BACKGROUND',(0,0),(-1,0),colors.HexColor('#e6e9ed')),('FONTNAME',(0,0),(-1,0),'Helvetica-Bold'),
                       ('ALIGN',(1,0),(-1,-1),'RIGHT'),('VALIGN',(0,0),(-1,-1),'MIDDLE'),

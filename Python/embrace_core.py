@@ -276,7 +276,26 @@ class Course:
     modalities: list = field(default_factory=lambda: ['MRI + CT']*5)
     dvhs: list = field(default_factory=lambda: [None]*5)
     screenshots: list = field(default_factory=lambda: [None]*5)
+    ct_dates: list = field(default_factory=lambda: ['']*5)
+    point_doses: list = field(default_factory=lambda: [{} for _ in range(5)])
     relative_doses: list = field(default_factory=lambda: [{} for _ in range(5)])
+
+    def set_report_details(self, dates, doses):
+        from datetime import date
+        clean_dates=[];clean_doses=[]
+        for fx in range(self.count):
+            value=dates[fx].strip()
+            if value and date.fromisoformat(value).isoformat()!=value:
+                raise ValueError(f'Fx {fx+1}: use YYYY-MM-DD for the CT date.')
+            clean_dates.append(value)
+            points={}
+            for key in ('rectovaginal','point_a_left','point_a_right','vaginal'):
+                value=number(doses[fx].get(key))
+                if value is not None and value<0: raise ValueError('Point doses must be nonnegative Gy.')
+                points[key]=value
+            clean_doses.append(points)
+        self.ct_dates[:self.count]=clean_dates
+        self.point_doses[:self.count]=clean_doses
 
     @classmethod
     def for_mode(cls, mode):
@@ -354,6 +373,8 @@ class Course:
                 self.modalities[fx] = 'MRI + CT'
                 self.dvhs[fx] = None
                 self.screenshots[fx] = None
+                self.ct_dates[fx] = ''
+                self.point_doses[fx] = {}
         elif count > old:
             sources = [i for i in range(old) if self.explicit[i]]
             if sources:
@@ -374,6 +395,8 @@ class Course:
         self.explicit[fx] = True
         self.dvhs[fx] = parsed
         self.screenshots[fx] = None
+        self.ct_dates[fx] = ''
+        self.point_doses[fx] = {}
         for dest in range(fx, self.count):
             if dest == fx or not self.explicit[dest]:
                 # MATLAB preserves existing metrics absent from the new file.
