@@ -52,19 +52,25 @@ class MetricTable(tk.Frame):
             label=self.cell(self.head_grid,0,col,text,HEADER,bold=True)
             label.configure(height=2)
             self.headings.append(label)
-        self.cell(self.head_grid,1,0,'MR / CT',BG)
+        self.cell(self.grid_frame,0,0,'MR / CT',BG)
         for fx in range(5):
             var=tk.StringVar()
-            box=ttk.Combobox(self.head_grid,textvariable=var,values=['','MRI','CT','MRI + CT'],state='readonly',width=1)
-            box.grid(row=1,column=fx+1,sticky='ew',padx=(0,1),pady=(0,1))
+            box=ttk.Combobox(self.grid_frame,textvariable=var,values=['','MRI','CT','MRI + CT'],state='readonly',width=1)
+            box.grid(row=0,column=fx+1,sticky='ew',padx=(0,1),pady=(0,1))
             box.bind('<<ComboboxSelected>>',lambda e,i=fx:app.set_modality(i))
             app.modality_vars.append(var);app.modality_boxes.append(box)
-        for col in (6,7,8):self.cell(self.head_grid,1,col,'',BG)
-        row=0
+        for col in (6,7,8):self.cell(self.grid_frame,0,col,'',BG)
+        row=1
         def point_section(title,bg=HEADER):
             nonlocal row
-            label=tk.Label(self.grid_frame,text=title,bg=bg,fg=INK,anchor='w',font=(FONT,10,'bold'),padx=7,pady=0)
-            label.grid(row=row,column=0,columnspan=9,sticky='nsew',pady=(8 if row else 0,2))
+            heading=self.cell(self.grid_frame,row,0,title,bg,True)
+            heading.grid_configure(pady=(8,2))
+            for fx in range(5):
+                review=ttk.Button(self.grid_frame,text=f'Review Fx {fx+1}\npoint matches',width=1,style='Compact.Load.TButton',command=lambda i=fx:app.review_loaded_points(i))
+                review.grid(row=row,column=fx+1,sticky='nsew',padx=1,pady=(8,2))
+                app.point_review_buttons.append(review)
+            for col in (6,7,8):
+                self.cell(self.grid_frame,row,col,'',bg).grid_configure(pady=(8,2))
             row+=1
         def add_points(keys):
             nonlocal row
@@ -147,7 +153,7 @@ class MetricTable(tk.Frame):
         if self.cylinder: proportions=[225,70,70,70,70,70,135,0,0]
         widths=[int(event.width*w/sum(proportions)) for w in proportions]
         widths[0]+=event.width-sum(widths)
-        for grid in (self.head_grid,self.grid_frame):
+        for grid in (self.head_grid,self.grid_frame,self.app.fraction_grid):
             for col,width in enumerate(widths):
                 grid.columnconfigure(col,minsize=width,weight=0)
 
@@ -227,7 +233,6 @@ class App(tk.Tk):
         self.patient.pack(side='right',padx=16)
         controls=tk.Frame(self.top,bg=BG,padx=6,pady=2)
         controls.pack(fill='x',padx=12,pady=2)
-        tk.Label(controls,text='BRACHYTHERAPY',bg=BG,fg=INK,font=(FONT,10,'bold')).pack(side='left',padx=(0,6))
         self.count=tk.StringVar(value=f'{self.course.count} Fx')
         count=ttk.Combobox(controls,textvariable=self.count,style='Editable.TCombobox',values=['3 Fx','4 Fx','5 Fx'],width=5,state='readonly')
         count.pack(side='left',padx=(4,6))
@@ -244,34 +249,36 @@ class App(tk.Tk):
         tk.Label(self.rx_frame,text='Gy/Fx',bg=BG,fg=INK,font=(FONT,10)).pack(side='left',padx=(6,12))
         self.rx_summary=tk.Label(self.rx_frame,bg=BG,fg=INK,font=(FONT,10))
         self.rx_summary.pack(side='left')
-        cards=tk.Frame(self.top,bg=BG)
+        cards=tk.Frame(self.top,bg=FRAME)
+        self.fraction_grid=cards
         cards.pack(fill='x',padx=12,pady=(0,2))
-        cards.columnconfigure(0,minsize=145)
-        for row,label in enumerate(('DVH file','DVH Filename + Date','Plan DICOMs','Plan Date','CT Date')):
-            cell=MetricTable.cell(cards,row,0,label,BG,row in (0,2))
-            cell.configure(width=20,font=(FONT,9,'bold' if row in (0,2) else 'normal'))
-            if row in (1,3,4):
+        for row,label in enumerate(('DVH file','Plan DICOMs','DVH txt','RP + RD files','CT.dcm')):
+            cell=MetricTable.cell(cards,row,0,label,BG,row in (0,1))
+            cell.configure(width=1,font=(FONT,9,'bold' if row in (0,1) else 'normal'))
+            if row in (2,3,4):
                 cell.configure(bg=FRAME,fg='white');cell.grid_configure(padx=0,pady=0)
-        self.buttons=[];self.file_labels=[];self.source_dates=[];self.dicom_buttons=[];self.ct_date_labels=[]
+        self.buttons=[];self.file_labels=[];self.source_dates=[];self.dicom_buttons=[];self.ct_date_labels=[];self.point_review_buttons=[]
         self.modality_vars=[];self.modality_boxes=[]
         for fx in range(5):
-            cards.columnconfigure(fx+1,weight=1,uniform='fractions')
-            button=ttk.Button(cards,text=f'Load Fx{fx+1} DVH.txt',style='Load.TButton',command=lambda i=fx:self.load(i))
-            button.grid(row=0,column=fx+1,sticky='ew',padx=4,pady=3)
+            button=ttk.Button(cards,text=f'Load Fx{fx+1}\nDVH.txt',width=1,style='Compact.Load.TButton',command=lambda i=fx:self.load(i))
+            button.grid(row=0,column=fx+1,sticky='ew',padx=4,pady=1)
             self.buttons.append(button)
-            name=MetricTable.cell(cards,1,fx+1,'No DVH loaded','white')
-            name.configure(font=(FONT,9),height=1,anchor='w',justify='left',padx=8)
+            name=MetricTable.cell(cards,2,fx+1,'No DVH loaded','white')
+            name.configure(font=(FONT,9),height=1,anchor='center',justify='center',padx=8)
             name.grid_configure(padx=0,pady=0)
             name.bind('<Configure>',lambda e:e.widget.configure(wraplength=max(50,e.width-10)))
             self.file_labels.append(name)
             self.source_dates.append(MetricTable.cell(cards,3,fx+1,'—','white'))
-            dicom=ttk.Button(cards,text=f'Load Fx{fx+1} Plan DICOMS',style='Load.TButton',command=lambda i=fx:self.load_dicoms(i))
-            dicom.grid(row=2,column=fx+1,sticky='ew',padx=4,pady=3)
+            self.source_dates[-1].configure(height=0,anchor='center',justify='center')
+            self.source_dates[-1].bind('<Configure>',lambda e:e.widget.configure(wraplength=max(50,e.width-16)))
+            dicom=ttk.Button(cards,text=f'Load Fx{fx+1}\nPlan DICOMS',width=1,style='Compact.Load.TButton',command=lambda i=fx:self.load_dicoms(i))
+            dicom.grid(row=1,column=fx+1,sticky='ew',padx=4,pady=1)
             self.dicom_buttons.append(dicom)
             self.ct_date_labels.append(MetricTable.cell(cards,4,fx+1,'—','white'))
             for label in (self.source_dates[-1],self.ct_date_labels[-1]):label.grid_configure(padx=0,pady=0)
-        attachments=tk.Frame(self.top,bg=BG,padx=4,pady=2)
-        attachments.pack(fill='x',padx=12,pady=(0,2))
+        attachments=tk.Frame(controls,bg=BG,padx=0,pady=0)
+        attachments.pack(side='left',before=count)
+        tk.Frame(controls,bg='#d3d8dc',width=1,height=22).pack(side='left',before=count,padx=12)
         tk.Label(attachments,text='PDF fraction',bg=BG,fg=INK).pack(side='left')
         self.image_fx=tk.StringVar(value='Fx 1')
         self.image_fx_box=ttk.Combobox(attachments,textvariable=self.image_fx,state='readonly',width=5)
@@ -283,12 +290,16 @@ class App(tk.Tk):
         menu.add_command(label='Snip screen…',command=lambda:self.add_screenshot(True))
         menu.add_separator();menu.add_command(label='Manage images…',command=self.remove_screenshot)
         image_menu.configure(menu=menu);image_menu.pack(side='left',padx=3)
-        self.image_status=tk.Label(attachments,text='',bg=BG,fg=INK)
+        self.image_status=tk.Label(attachments,text='',bg=BG,fg=MUTED,font=(FONT,8))
         self.image_status.pack(side='left',padx=6)
         self.show_files=tk.BooleanVar(value=True)
+        bt_heading=tk.Label(self.top,text='BRACHYTHERAPY',bg=FRAME,fg='white',font=(FONT,12,'bold'),anchor='w')
+        bt_heading.pack(fill='x',padx=14,pady=(8,3),before=controls)
         self.prior_frame=tk.Frame(self.top,bg='#d3d8dc')
-        self.prior_frame.pack(fill='x',padx=12,pady=(0,2),before=controls)
-        for col,(title,weight) in enumerate((('EXTERNAL BEAM THERAPY',4),('Value',1),('Tumour EQD2₁₀ [Gy]',2),('OAR EQD2₃ [Gy]',2))):
+        self.prior_frame.pack(fill='x',padx=12,pady=(0,2),before=bt_heading)
+        ebrt_heading=tk.Label(self.top,text='EXTERNAL BEAM THERAPY',bg=FRAME,fg='white',font=(FONT,12,'bold'),anchor='w')
+        ebrt_heading.pack(fill='x',padx=14,pady=(3,3),before=self.prior_frame)
+        for col,(title,weight) in enumerate((('Parameter',4),('Value',1),('Tumour EQD2₁₀ [Gy]',2),('OAR EQD2₃ [Gy]',2))):
             MetricTable.cell(self.prior_frame,0,col,title,HEADER,True)
             self.prior_frame.columnconfigure(col,weight=0,minsize=(290,90,195,185)[col])
         self.prior_vars=[tk.StringVar(),tk.StringVar()]
@@ -307,7 +318,7 @@ class App(tk.Tk):
             for row in range(4):
                 MetricTable.cell(self.prior_frame,row,col,'','white')
         if self.course.mode=='Cylinder':
-            self.prior_frame.pack_forget()
+            self.prior_frame.pack_forget();ebrt_heading.pack_forget()
         body=MetricTable(self.dashboard,self,'DOSE / EQD2',self.course.structures,None)
         self.tables=[body]
         footer=tk.Frame(self.dashboard,bg=BG)
@@ -360,10 +371,12 @@ class App(tk.Tk):
         self.patient.configure(text=f'Patient: {c.patient or "—"}   |   ID: {c.patient_id or "—"}')
         for fx,label in enumerate(self.file_labels):
             date=c.dvhs[fx].source_date if c.dvhs[fx] else ''
-            text=(c.files[fx]+'\n'+(date or '—')) if c.files[fx] else '—'
+            text=f'{c.files[fx]} ({date or chr(8212)})' if c.files[fx] else '—'
             label.configure(text=text if fx<c.count else '—',height=0 if c.files[fx] and fx<c.count else 1,bg=FRAME,fg='white' if fx<c.count else '#929ba4')
-            date=c.dvhs[fx].source_date if c.dvhs[fx] else ''
-            self.source_dates[fx].configure(text=(date or '—') if fx<c.count else '—',bg=FRAME,fg='white' if fx<c.count else '#929ba4')
+            rp_text=f'{c.rp_names[fx]} ({c.rp_dates[fx] or chr(8212)})' if c.rp_names[fx] else '—'
+            self.source_dates[fx].configure(text=rp_text if fx<c.count else '—',bg=FRAME,fg='white' if fx<c.count else '#929ba4')
+        for fx,button in enumerate(self.point_review_buttons):
+            button.configure(state='normal' if fx<c.count and c.mode=='GYN' and c.point_records[fx] else 'disabled')
         for fx,button in enumerate(self.dicom_buttons):
             button.configure(state='normal' if fx<c.count else 'disabled')
             self.ct_date_labels[fx].configure(text=(c.ct_dates[fx] or '—') if fx<c.count else '—',bg=FRAME,fg='white' if fx<c.count else '#929ba4')
@@ -505,6 +518,8 @@ class App(tk.Tk):
                 if plan and plan.patient_id and plan.patient_id.casefold()!=candidate.patient_id.casefold():
                     raise ValueError('DICOM patient does not match the loaded comparison plans.')
             if result['ct_date'] is not None:candidate.ct_dates[fx]=result['ct_date']
+            if result['rp_name'] is not None:
+                candidate.rp_names[fx]=result['rp_name'];candidate.rp_dates[fx]=result['rp_date']
             points=result['points']
             if points is not None and candidate.mode=='GYN':
                 candidate.point_records[fx]=points
@@ -517,11 +532,13 @@ class App(tk.Tk):
         except Exception as error:messagebox.showerror('DICOM import',str(error),parent=self)
 
     def review_loaded_points(self,fx):
+        if not self.commit_inputs():return
+        if fx>=self.course.count or not self.course.point_records[fx]:return
         from embrace_points import POINTS
         dialog=tk.Toplevel(self);dialog.title(f'Fx {fx+1}: review imported points');dialog.transient(self);dialog.grab_set()
         tk.Label(dialog,text='Matched doses are already filled. Assign any remaining points, or leave them unassigned.').grid(row=0,column=0,columnspan=4,padx=12,pady=8)
         choices={'Unassigned':None,**{label:key for key,label,_,_ in POINTS}}
-        inverse={value:key for key,value in choices.items()};selections=[]
+        inverse={value:key for key,value in choices.items()};selections=[];match_boxes=[]
         records=deepcopy(self.course.point_records[fx])
         for col,title in enumerate(('Point Set Name','Point Name','Dose [Gy]','Worksheet point')):
             tk.Label(dialog,text=title,font=(FONT,10,'bold')).grid(row=1,column=col,padx=8)
@@ -529,7 +546,15 @@ class App(tk.Tk):
             for col,value in enumerate((point['group'],point['name'],fmt(point['dose']))):
                 tk.Label(dialog,text=value).grid(row=row,column=col,padx=8,pady=3)
             var=tk.StringVar(value=inverse[point['target']]);selections.append(var)
-            ttk.Combobox(dialog,textvariable=var,values=list(choices),state='readonly',width=30).grid(row=row,column=3,padx=8)
+            box=ttk.Combobox(dialog,textvariable=var,values=list(choices),state='readonly',width=30)
+            box.grid(row=row,column=3,padx=8);match_boxes.append(box)
+        def update_choices(*_):
+            selected=[var.get() for var in selections]
+            for index,box in enumerate(match_boxes):
+                taken={value for i,value in enumerate(selected) if i!=index and value!='Unassigned'}
+                box.configure(values=[label for label in choices if label not in taken])
+        for var in selections:var.trace_add('write',update_choices)
+        update_choices()
         def apply():
             targets=[choices[v.get()] for v in selections];used=[v for v in targets if v]
             if len(used)!=len(set(used)):

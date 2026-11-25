@@ -107,6 +107,12 @@ def read_fraction_dicoms(paths, patient_id):
     frames={str(ds.FrameOfReferenceUID) for items in files.values() for _,ds in items if getattr(ds,'FrameOfReferenceUID',None)}
     if len(frames)>1:raise ValueError('The selected DICOM files have different frames of reference. Select files from the same plan / CT.')
     result={'ct_date':None,'points':None,'date':'','warnings':[],'patient_id':patient_id}
+    result['rp_name']=None;result['rp_date']=''
+    if files['RTPLAN']:
+        rp_path,rp=files['RTPLAN'][0]
+        result['rp_name']=str(getattr(rp,'RTPlanLabel','')).strip() or str(getattr(rp,'RTPlanName','')).strip() or Path(rp_path).name
+        raw=str(getattr(rp,'RTPlanDate',''))
+        if raw:result['rp_date']=datetime.strptime(raw,'%Y%m%d').date().isoformat()
     if files['CT']:
         dates=set();series=set()
         for _,ds in files['CT']:

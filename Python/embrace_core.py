@@ -277,6 +277,8 @@ class Course:
     dvhs: list = field(default_factory=lambda: [None]*5)
     screenshots: list = field(default_factory=lambda: [None]*5)
     ct_dates: list = field(default_factory=lambda: ['']*5)
+    rp_names: list = field(default_factory=lambda: ['']*5)
+    rp_dates: list = field(default_factory=lambda: ['']*5)
     point_doses: list = field(default_factory=lambda: [{} for _ in range(5)])
     point_records: list = field(default_factory=lambda: [[] for _ in range(5)])
     point_source_dates: list = field(default_factory=lambda: ['']*5)
@@ -384,6 +386,7 @@ class Course:
                 self.dvhs[fx] = None
                 self.screenshots[fx] = None
                 self.ct_dates[fx] = ''
+                self.rp_names[fx] = self.rp_dates[fx] = ''
                 self.point_doses[fx] = {}
                 self.point_records[fx] = []
                 self.point_source_dates[fx] = ''
@@ -410,6 +413,7 @@ class Course:
         self.screenshots[fx] = None
         if replacing_dvh:
             self.ct_dates[fx] = ''
+            self.rp_names[fx] = self.rp_dates[fx] = ''
             self.point_doses[fx] = {}
             self.point_records[fx] = []
             self.point_source_dates[fx] = ''

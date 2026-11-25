@@ -47,6 +47,7 @@ def apply_theme(root):
     style.map('TButton',background=[('active','#d5d9dd')],foreground=[('disabled','#69737e')])
     style.configure('Load.TButton',background=SURFACE,borderwidth=1,relief='flat',bordercolor='#bdc5cc',lightcolor=SURFACE,darkcolor=SURFACE,padding=(8,4),font=(FONT,9,'bold'))
     style.map('Load.TButton',background=[('disabled',HEADER),('pressed','#d5d9dd'),('active','#edf0f3')],relief=[('pressed','flat')],lightcolor=[('disabled',HEADER),('pressed','#d5d9dd'),('active','#edf0f3')],darkcolor=[('disabled',HEADER),('pressed','#d5d9dd'),('active','#edf0f3')])
+    style.configure('Compact.Load.TButton',padding=(8,1))
     style.configure('TCheckbutton',background=BG,foreground=MUTED)
     style.map('TCheckbutton',background=[('active',BG)],foreground=[('active',INK)])
     style.configure('TCombobox',fieldbackground=SURFACE,background=HEADER,foreground=INPUT_INK,arrowcolor=INK,padding=3)

@@ -135,3 +135,20 @@ class PointTests(unittest.TestCase):
                 self.assertEqual(course.ct_dates[0],'2026-08-31')
                 course.load(0,'replacement.txt')
                 self.assertEqual(course.point_doses[0],{})
+
+    def test_rp_name_and_date_are_from_plan(self):
+        from embrace_dicom import read_fraction_dicoms
+        with tempfile.TemporaryDirectory() as folder:
+            root=Path(folder);rd,rp=self.fixture(root)
+            rp.RTPlanLabel='QA Plan';rp.RTPlanDate='20260830'
+            rp.save_as(root/'rp.dcm',enforce_file_format=True)
+            result=read_fraction_dicoms([root/'rp.dcm',root/'rd.dcm'],'QA')
+            self.assertEqual(result['rp_name'],'QA Plan')
+            self.assertEqual(result['rp_date'],'2026-08-30')
+            self.assertEqual(result['date'],'2026-08-31')
+            self.assertIsNone(read_fraction_dicoms([root/'rd.dcm'],'QA')['rp_name'])
+            del rp.RTPlanDate;rp.save_as(root/'rp.dcm',enforce_file_format=True)
+            self.assertEqual(read_fraction_dicoms([root/'rp.dcm'],'QA')['rp_date'],'')
+            course=Course();course.rp_names[3]='QA Plan';course.rp_dates[3]='2026-08-30'
+            course.set_count(3)
+            self.assertEqual(course.rp_names[3],'');self.assertEqual(course.rp_dates[3],'')
