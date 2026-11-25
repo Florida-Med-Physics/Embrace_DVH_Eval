@@ -31,3 +31,20 @@ class ReportSelectionTests(unittest.TestCase):
         self.assertNotIn('FRACTION 1',text)
         self.assertLess(text.index('ONCENTRA'),text.index('RELATIVE DVH'))
         with self.assertRaises(ValueError):appendix(c,5)
+
+    def test_multiple_images_stay_in_fraction_and_precede_dvh(self):
+        c=Course()
+        c.dvhs[1]=DVH('QA','QA','plan',{},[],curves={'ctvhr':{'name':'CTV_HR','rows':[(0,10),(7,9),(14,0)],'total_cc':10,'relative':False}})
+        data=io.BytesIO();Image.new('RGB',(100,100)).save(data,format='PNG')
+        c.screenshots[1]=[data.getvalue(),data.getvalue()]
+        self.assertEqual(len(c.screenshot_images(1)),2)
+        self.assertEqual(c.screenshot_images(0),[])
+        text=' '.join(getattr(item,'text','') for item in appendix(c,1))
+        self.assertIn('IMAGE 1 OF 2',text)
+        self.assertIn('IMAGE 2 OF 2',text)
+        self.assertLess(text.index('IMAGE 1 OF 2'),text.index('IMAGE 2 OF 2'))
+        self.assertLess(text.index('IMAGE 2 OF 2'),text.index('RELATIVE DVH'))
+        c.set_count(4)
+        c.screenshots[3]=[data.getvalue()]
+        c.set_count(3)
+        self.assertEqual(c.screenshot_images(3),[])

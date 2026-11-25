@@ -7,6 +7,7 @@ import zipfile
 import xml.etree.ElementTree as ET
 from xml.sax.saxutils import escape
 from embrace_core import METRICS
+from embrace_points import POINTS
 
 NS = 'http://schemas.openxmlformats.org/spreadsheetml/2006/main'
 REL = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships'
@@ -47,6 +48,16 @@ def export_workbook(course, template, output):
         # H is the template's sixth fraction: always clear it.
         for fx, col in enumerate('CDEFGH'):
             updates[f'{col}{metric.row}'] = course.values[fx].get(key) if fx < course.count else None
+    # Keep the original point rows, styles and EQD2 formulas; clear unused fractions.
+    for key,_,row,_ in POINTS:
+        if row is not None:
+            for fx,col in enumerate('CDEFGH'):
+                updates[f'{col}{row}']=course.point_doses[fx].get(key) if fx<course.count else None
+    # Generic left/right vaginal points do not establish a 5 mm depth.
+    updates.update({'B93':'Vaginal point left','B95':'Vaginal point right'})
+    for fx,col in enumerate('CDEFGH'):
+        updates[f'{col}15']=course.point_source_dates[fx] if fx<course.count else None
+        updates[f'{col}18']=course.modalities[fx] if fx<course.count else None
     temporary = None
     try:
         with zipfile.ZipFile(template) as src:

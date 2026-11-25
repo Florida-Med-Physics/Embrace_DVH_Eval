@@ -8,9 +8,10 @@ from xml.sax.saxutils import escape
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import letter
 from reportlab.lib.styles import ParagraphStyle
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Table, TableStyle, Spacer, PageBreak, KeepTogether
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Table, TableStyle, Spacer, PageBreak, KeepTogether, BaseDocTemplate, PageTemplate, Frame, NextPageTemplate
 
 from embrace_core import STRUCTURES, eqd2, fmt, status
+from embrace_points import POINTS, REFERENCE_KEYS
 
 # Colors carried over from the supplied MATLAB application's UF palette.
 UF_BLUE = colors.HexColor('#002169')
@@ -54,9 +55,10 @@ def export_pdf(course, output, fraction=0, worksheet_only=False):
     output=Path(output)
     if not any(v is not None for values in course.values[:course.count] for v in values.values()):
         raise ValueError('There are no brachytherapy fraction values to export.')
-    normal=ParagraphStyle('Worksheet',fontName='Helvetica',fontSize=8,leading=10,textColor=INK)
+    compact=course.mode=='GYN'
+    normal=ParagraphStyle('Worksheet',fontName='Helvetica',fontSize=6.5 if compact else 8,leading=8 if compact else 10,textColor=INK)
     head=ParagraphStyle('WorksheetHeader',parent=normal,fontName='Helvetica-Bold',alignment=1)
-    small=ParagraphStyle('WorksheetSmall',parent=normal,fontSize=7,leading=9)
+    small=ParagraphStyle('WorksheetSmall',parent=normal,fontSize=6 if compact else 7,leading=7 if compact else 9)
     title=ParagraphStyle('WorksheetTitle',parent=normal,fontName='Helvetica-Bold',fontSize=13,leading=16)
     blue=colors.HexColor('#d9eff7')
     band=colors.HexColor('#e6e9ed')
@@ -64,16 +66,17 @@ def export_pdf(course, output, fraction=0, worksheet_only=False):
         return Paragraph(escape(str(value)).replace('\n','<br/>'),style)
     def style_table(table,extra=()):
         table.setStyle(TableStyle([
-            ('FONTNAME',(0,0),(-1,-1),'Helvetica'),('FONTSIZE',(0,0),(-1,-1),8),
-            ('VALIGN',(0,0),(-1,-1),'MIDDLE'),('ALIGN',(1,0),(-1,-1),'CENTER'),
+            ('FONTNAME',(0,0),(-1,-1),'Helvetica'),('FONTSIZE',(0,0),(-1,-1),6.5 if compact else 8),
+            ('LEADING',(0,0),(-1,-1),8 if compact else 10),('VALIGN',(0,0),(-1,-1),'MIDDLE'),('ALIGN',(1,0),(-1,-1),'CENTER'),
             ('TOPPADDING',(0,0),(-1,-1),.5),('BOTTOMPADDING',(0,0),(-1,-1),.5),
             ('LEFTPADDING',(0,0),(-1,-1),5),('RIGHTPADDING',(0,0),(-1,-1),5),
-            ('GRID',(0,0),(-1,-1),.3,colors.HexColor('#b8c0c7')),
+            ('GRID',(0,0),(-1,-1),.3,colors.black if compact else colors.HexColor('#b8c0c7')),
             ('BACKGROUND',(0,0),(-1,0),band),('FONTNAME',(0,0),(-1,0),'Helvetica-Bold'),
         ]+list(extra)))
         return table
     story=[]
-    for page,(heading,definitions) in enumerate(course.sections):
+    sections=[('BRACHYTHERAPY',course.structures)] if compact else course.sections
+    for page,(heading,definitions) in enumerate(sections):
         if page: story.append(PageBreak())
         story += [p(course.title+' | PHYSICAL - BIOLOGICAL DOCUMENTATION OF HDR BT',title),Spacer(1,5),
                   p(f'PATIENT: {course.patient or "Not specified"}    |    ID: {course.patient_id or "Not specified"}'),
@@ -86,12 +89,14 @@ def export_pdf(course, output, fraction=0, worksheet_only=False):
         if course.mode=='Cylinder':
             pass
         elif page==0:
-            story += [style_table(Table(prior,colWidths=[300,100,160,160]),[('BACKGROUND',(1,1),(1,2),blue)]),Spacer(1,8)]
+            story += [style_table(Table(prior,colWidths=[180,60,156,156] if compact else [200,80,170,170],hAlign='LEFT'),[('BACKGROUND',(1,1),(1,2),blue)]),Spacer(1,8)]
         else:
             story += [p(f'EXTERNAL BEAM THERAPY: {fmt(course.dose_per_fx)} Gy x {course.prior_fractions} | EQD2 tumour: {fmt(course.baseline(10))} Gy | EQD2 OAR: {fmt(course.baseline(3))} Gy'),Spacer(1,8)]
         goals=('Planning goal','Tolerance') if page==0 else ('Soft constraint','Hard constraint')
+        if compact:goals=('Planning goal /\nSoft constraint','Tolerance /\nHard constraint')
         n=course.count
-        widths=[720-(48*n+65+75+70+70)]+[48]*n+[65,75,70,70]
+        widths=[170]+[48]*n+[65,75,70,70]
+        if compact:widths=[w*552/sum(widths) for w in widths]
         labels=['Structure / dose parameter']+[f'F {i+1}' for i in range(n)]+['TOTAL BT\nEQD2 [Gy]','BT + EBRT\nEQD2 [Gy]',*goals]
         rows=[[p(v,head) for v in labels]]
         commands=[]
@@ -100,13 +105,28 @@ def export_pdf(course, output, fraction=0, worksheet_only=False):
         rows.append(['Plan / source']+[p(course.files[i] or course.plans[i] or 'Manual',small) for i in range(n)]+['']*4)
         rows.append(['Date']+[p(course.dvhs[i].source_date or 'Unavailable',small) if course.dvhs[i] else p('Not imported',small) for i in range(n)]+['']*4)
         rows.append(['CT date (manual)']+[p(course.ct_dates[i] or 'Not entered',small) for i in range(n)]+['']*4)
+        def point_rows(keys):
+            for key,label,_,ab in POINTS:
+                if key not in keys:continue
+                r=len(rows)
+                values=[course.point_doses[i].get(key) for i in range(n)]
+                rows.append([p(label+' [Gy]',small)]+[fmt(v) for v in values]+['']*4)
+                commands.extend([('BACKGROUND',(1,r),(n,r),blue),('NOSPLIT',(0,r),(-1,r+1 if ab else r))])
+                if ab:
+                    biological=[eqd2(v,ab) if v is not None else None for v in values]
+                    total=sum(v for v in biological if v is not None) if any(v is not None for v in biological) else None
+                    rows.append([f'EQD2{ab} [Gy]']+[fmt(v) for v in biological]+[fmt(total),fmt(total+course.baseline(ab)) if total is not None else '','',''])
         for name,key,metrics in definitions:
+            roi_start=len(rows)
             r=len(rows)
-            rows.append([name]+['']*(n+4))
+            has_volume=compact and any(m.key=='volume' for m in metrics)
+            rows.append([name+' [cc]' if has_volume else name]+([fmt(course.values[i].get(key+'_volume')) for i in range(n)]+['']*4 if has_volume else ['']*(n+4)))
             commands += [('SPAN',(0,r),(-1,r)),('BACKGROUND',(0,r),(-1,r),band),
                          ('FONTNAME',(0,r),(-1,r),'Helvetica-Bold'),('LINEABOVE',(0,r),(-1,r),1,INK),
                          ('TOPPADDING',(0,r),(-1,r),4),('NOSPLIT',(0,r),(-1,r+1))]
+            if has_volume:commands=[cmd for cmd in commands if not (cmd[0]=='SPAN' and cmd[1]==(0,r))]
             for metric in metrics:
+                if has_volume and metric.key=='volume':continue
                 k=f'{key}_{metric.key}'
                 r=len(rows)
                 rows.append([metric.label]+[fmt(course.values[i].get(k)) for i in range(n)]+['']*4)
@@ -117,40 +137,62 @@ def export_pdf(course, output, fraction=0, worksheet_only=False):
                     rows.append([metric.label.replace('[Gy]',f'EQD2{metric.ab} [Gy]')]+[fmt(v) for v in values]+[fmt(bt),fmt(course.total(k)),metric.goal,metric.hard])
                     r=len(rows)-1
                     commands += [('BACKGROUND',(n+2,r),(n+2,r),STATUS[status(course.total(k),metric)]),('FONTNAME',(n+1,r),(n+2,r),'Helvetica-Bold')]
+            commands.append(('NOSPLIT',(0,roi_start),(-1,len(rows)-1)))
+        if compact:
+            reference_start=len(rows)
+            r=len(rows);rows.append(['REFERENCE POINTS']+['']*(n+4))
+            commands.extend([('SPAN',(0,r),(-1,r)),('BACKGROUND',(0,r),(-1,r),band),('FONTNAME',(0,r),(-1,r),'Helvetica-Bold'),('NOSPLIT',(0,r),(-1,r+1))])
+            commands.append(('BACKGROUND',(0,r),(-1,r),colors.HexColor('#cfa2ff')))
+            rows.append(['Point source date (RD)']+[p(course.point_source_dates[i] or 'Not imported',small) for i in range(n)]+['']*4)
+            point_rows(REFERENCE_KEYS)
+            if any(course.point_doses[i].get('vaginal') is not None for i in range(n)):point_rows(('vaginal',))
+            commands.append(('NOSPLIT',(0,reference_start),(-1,len(rows)-1)))
         if course.mode=='Cylinder':
             rows=[row[:n+2] for row in rows]
-            widths=[720-65*n-100]+[65]*n+[100]
+            widths=[170]+[65]*n+[100]
             commands=[command for command in commands
                       if not (isinstance(command[1],tuple) and
                               (command[1][0]>n+1 or command[2][0]>n+1))]
-        section=Table([[heading]],colWidths=[720])
+        section=Table([[heading]],colWidths=[sum(widths)],hAlign='LEFT')
         section.setStyle(TableStyle([('BACKGROUND',(0,0),(-1,-1),INK),('TEXTCOLOR',(0,0),(-1,-1),colors.white),('FONTNAME',(0,0),(-1,-1),'Helvetica-Bold'),('FONTSIZE',(0,0),(-1,-1),10),('TOPPADDING',(0,0),(-1,-1),4),('BOTTOMPADDING',(0,0),(-1,-1),4)]))
         story += [section,style_table(Table(rows,colWidths=widths,repeatRows=5,hAlign='LEFT'),commands)]
-    if course.mode=='GYN':
-        story += [PageBreak(),p('EMBRACE-2 | REFERENCE POINT DOSES',title),Spacer(1,8),
-                  p(f'PATIENT: {course.patient or "Not specified"} | ID: {course.patient_id or "Not specified"}'),
-                  p('Manually entered physical dose per fraction [Gy]. Blank values have not been entered.'),Spacer(1,8)]
-        rows=[['Reference point']+[f'Fx {i+1} [Gy]' for i in range(course.count)]]
-        for key,label in [('rectovaginal','Recto-vaginal'),('point_a_left','Point A left'),('point_a_right','Point A right'),('vaginal','Vaginal point')]:
-            rows.append([label]+[fmt(course.point_doses[i].get(key)) for i in range(course.count)])
-        story.append(style_table(Table(rows,colWidths=[240]+[480/course.count]*course.count,hAlign='LEFT')))
+    if course.mode=='GYN' and any(course.point_records[:course.count]):
+        story += [PageBreak(),p('EMBRACE-2 | POINT SOURCE DETAILS',title),Spacer(1,8),
+                  p('RD physical doses and reviewed worksheet destinations. Unassigned points are not included in worksheet totals.'),Spacer(1,8)]
+        point_labels={key:label for key,label,_,_ in POINTS}
+        rows=[['Fx / RD date','Point set (RP)','Point name (RD)','RD dose [Gy]','Worksheet destination']]
+        for fx,records in enumerate(course.point_records[:course.count]):
+            for record in records:
+                key=record['target']
+                destination=point_labels.get(key,'Unassigned')
+                if key and course.point_doses[fx].get(key)!=record['dose']:destination+=' (manually changed)'
+                rows.append([p(f'Fx {fx+1} / {course.point_source_dates[fx]}',small),p(record['group'] or 'Unavailable',small),p(record['name'],small),f'{record["dose"]:.6f}',p(destination,small)])
+        story.append(style_table(Table(rows,colWidths=[90,90,90,70,212] if compact else [105,110,110,80,225],repeatRows=1,hAlign='LEFT')))
     from embrace_dvh_report import appendix
     front=[] if worksheet_only else appendix(course,fraction)
     if front:
         if isinstance(front[0],PageBreak): front.pop(0)
-        story=front+[PageBreak()]+story
+        story=front+([NextPageTemplate('worksheet')] if compact else [])+[PageBreak()]+story
     timestamp=datetime.now().strftime('%Y-%m-%d %H:%M')
     def footer(canvas,doc):
         canvas.setFont('Helvetica',7)
         canvas.setFillColor(INK)
-        if course.mode=='GYN': draw_trial_reference(canvas,792)
+        if course.mode=='GYN': draw_trial_reference(canvas,612)
         canvas.drawString(36,10,f'UFHPTI | {course.title if course.mode=="Cylinder" else "EMBRACE EQD2"} | {timestamp}')
-        canvas.drawRightString(756,10,f'Page {doc.page}')
+        canvas.drawRightString((doc.pageTemplate.pagesize[0] if compact else 792)-36,10,f'Page {doc.page}')
     fd,temp=tempfile.mkstemp(suffix='.pdf',dir=output.parent)
     os.close(fd)
     try:
-        doc=SimpleDocTemplate(temp,pagesize=(792,612),leftMargin=30,rightMargin=30,topMargin=18,bottomMargin=48,title=course.title+' worksheet',author='EMBRACE EQD2')
-        doc.build(story,onFirstPage=footer,onLaterPages=footer)
+        if compact:
+            doc=BaseDocTemplate(temp,title=course.title+' worksheet',author='EMBRACE EQD2')
+            templates=[]
+            if front:
+                templates.append(PageTemplate(id='report',pagesize=(792,612),frames=[Frame(30,48,732,546,leftPadding=6,rightPadding=6,topPadding=6,bottomPadding=6)],onPage=footer))
+            templates.append(PageTemplate(id='worksheet',pagesize=(612,792),frames=[Frame(30,48,552,726,leftPadding=0,rightPadding=0,topPadding=6,bottomPadding=6)],onPage=footer))
+            doc.addPageTemplates(templates);doc.build(story)
+        else:
+            doc=SimpleDocTemplate(temp,pagesize=(792,612),leftMargin=30,rightMargin=30,topMargin=18,bottomMargin=48,title=course.title+' worksheet',author='EMBRACE EQD2')
+            doc.build(story,onFirstPage=footer,onLaterPages=footer)
         os.replace(temp,output)
     finally:
         if os.path.exists(temp): os.unlink(temp)

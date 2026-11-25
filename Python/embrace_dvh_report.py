@@ -97,9 +97,9 @@ def appendix(course, fraction=0):
         parsed=course.dvhs[fx]
         modality=course.modalities[fx] or 'Not specified'
         context=f'Patient: {course.patient or "Not specified"} | ID: {course.patient_id or "Not specified"} | Fx {fx+1} | Localization (MR / CT): {modality}'
-        screenshot=course.screenshots[fx]
-        if screenshot:
-            story += [PageBreak(),p(f'ONCENTRA / ISODOSE - FRACTION {fx+1}'),p(context),Spacer(1,12)]
+        screenshots=course.screenshot_images(fx)
+        for index,screenshot in enumerate(screenshots,1):
+            story += [PageBreak(),p(f'ONCENTRA / ISODOSE - FRACTION {fx+1} · IMAGE {index} OF {len(screenshots)}'),p(context),Spacer(1,12)]
             image=Image(io.BytesIO(screenshot))
             scale=min(720/image.imageWidth,465/image.imageHeight)
             image.drawWidth=image.imageWidth*scale; image.drawHeight=image.imageHeight*scale
@@ -112,7 +112,7 @@ def appendix(course, fraction=0):
             report_rows=sorted(metric_rows(parsed,course.prescription_gy),key=lambda r:(r[0].casefold(),r[4]))
             for name,metric,*values in report_rows:
                 data.append([p(name)]+['' if value is None else f'{value:.2f}' for value in values])
-            table=Table(data,colWidths=[160,90,100,90,90],repeatRows=1,hAlign='LEFT')
+            table=Table(data,colWidths=[115,70,80,75,75],repeatRows=1,hAlign='LEFT')
             commands=[('FONTNAME',(0,0),(-1,-1),'Helvetica'),('FONTSIZE',(0,0),(-1,-1),7.5),
                       ('BACKGROUND',(0,0),(-1,0),colors.HexColor('#e6e9ed')),('FONTNAME',(0,0),(-1,0),'Helvetica-Bold'),
                       ('ALIGN',(1,0),(-1,-1),'RIGHT'),('VALIGN',(0,0),(-1,-1),'MIDDLE'),

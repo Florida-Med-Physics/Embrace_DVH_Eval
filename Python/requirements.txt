@@ -1,3 +1,5 @@
 reportlab==4.4.10
 Pillow==11.3.0
 mss==10.1.0
+pydicom==3.0.2
+pypdfium2==5.0.0

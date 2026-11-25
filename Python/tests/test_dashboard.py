@@ -129,6 +129,8 @@ class DashboardTests(unittest.TestCase):
                 old = ET.fromstring(src.read(path))
                 old_cells = {v.get('r'):v for v in old.iter(q('c'))}
                 physical = {col+str(m.row) for m in METRICS.values() for col in 'CDEFGH'}
+                from embrace_points import POINTS
+                physical.update(col+str(row) for _,_,row,_ in POINTS if row is not None for col in 'CDEFGH')
                 for ref,cell in old_cells.items():
                     if ref not in physical:
                         f = cell.find(q('f'))

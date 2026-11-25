@@ -37,13 +37,22 @@ def apply_theme(root):
     style.configure('.',background=BG,foreground=INK,font=(FONT,10))
     style.configure('TNotebook',background=BG,borderwidth=0)
     style.configure('TNotebook.Tab',background=SURFACE,foreground=MUTED,padding=(14,5))
-    style.map('TNotebook.Tab',background=[('selected',HEADER)],foreground=[('selected',INK)])
+    style.map('TNotebook.Tab',
+              background=[('selected','#202326'),('active',HEADER)],
+              foreground=[('selected','#ffffff'),('active',INK)],
+              font=[('selected',(FONT,10,'bold'))],
+              lightcolor=[('selected','#202326')],
+              darkcolor=[('selected','#202326')])
     style.configure('TButton',background=HEADER,foreground=INK,borderwidth=0,padding=(7,4))
     style.map('TButton',background=[('active','#d5d9dd')],foreground=[('disabled','#69737e')])
+    style.configure('Load.TButton',background=SURFACE,borderwidth=1,relief='flat',bordercolor='#bdc5cc',lightcolor=SURFACE,darkcolor=SURFACE,padding=(8,4),font=(FONT,9,'bold'))
+    style.map('Load.TButton',background=[('disabled',HEADER),('pressed','#d5d9dd'),('active','#edf0f3')],relief=[('pressed','flat')],lightcolor=[('disabled',HEADER),('pressed','#d5d9dd'),('active','#edf0f3')],darkcolor=[('disabled',HEADER),('pressed','#d5d9dd'),('active','#edf0f3')])
     style.configure('TCheckbutton',background=BG,foreground=MUTED)
     style.map('TCheckbutton',background=[('active',BG)],foreground=[('active',INK)])
     style.configure('TCombobox',fieldbackground=SURFACE,background=HEADER,foreground=INPUT_INK,arrowcolor=INK,padding=3)
     style.map('TCombobox',fieldbackground=[('readonly',SURFACE)],foreground=[('readonly',INPUT_INK)],selectbackground=[('readonly',SURFACE)],selectforeground=[('readonly',INPUT_INK)])
+    style.configure('Editable.TCombobox',fieldbackground=BLUE,background=BLUE)
+    style.map('Editable.TCombobox',fieldbackground=[('disabled',INACTIVE),('readonly',BLUE)],background=[('disabled',INACTIVE),('readonly',BLUE)],selectbackground=[('readonly',BLUE)],selectforeground=[('readonly',INPUT_INK)])
     style.configure('Vertical.TScrollbar',background=HEADER,troughcolor=SURFACE,arrowcolor=MUTED,borderwidth=0)
     root.option_add('*TCombobox*Listbox.background',SURFACE)
     root.option_add('*TCombobox*Listbox.foreground',INK)

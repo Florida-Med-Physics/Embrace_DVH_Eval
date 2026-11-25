@@ -278,7 +278,14 @@ class Course:
     screenshots: list = field(default_factory=lambda: [None]*5)
     ct_dates: list = field(default_factory=lambda: ['']*5)
     point_doses: list = field(default_factory=lambda: [{} for _ in range(5)])
+    point_records: list = field(default_factory=lambda: [[] for _ in range(5)])
+    point_source_dates: list = field(default_factory=lambda: ['']*5)
     relative_doses: list = field(default_factory=lambda: [{} for _ in range(5)])
+
+    def screenshot_images(self, fx):
+        """Return all attached images, including legacy single-image values."""
+        value=self.screenshots[fx]
+        return list(value) if isinstance(value,list) else ([value] if value else [])
 
     def set_report_details(self, dates, doses):
         from datetime import date
@@ -289,8 +296,11 @@ class Course:
                 raise ValueError(f'Fx {fx+1}: use YYYY-MM-DD for the CT date.')
             clean_dates.append(value)
             points={}
-            for key in ('rectovaginal','point_a_left','point_a_right','vaginal'):
-                value=number(doses[fx].get(key))
+            from embrace_points import POINTS
+            for key,_,_,_ in POINTS:
+                raw=doses[fx].get(key)
+                value=None if raw is None or str(raw).strip()=='' else float(raw)
+                if value is not None and not math.isfinite(value): raise ValueError('Point doses must be finite.')
                 if value is not None and value<0: raise ValueError('Point doses must be nonnegative Gy.')
                 points[key]=value
             clean_doses.append(points)
@@ -375,6 +385,8 @@ class Course:
                 self.screenshots[fx] = None
                 self.ct_dates[fx] = ''
                 self.point_doses[fx] = {}
+                self.point_records[fx] = []
+                self.point_source_dates[fx] = ''
         elif count > old:
             sources = [i for i in range(old) if self.explicit[i]]
             if sources:
@@ -392,11 +404,15 @@ class Course:
                 raise ValueError(f'{label} mismatch: loaded {new}; dashboard {current}.')
         self.patient = self.patient or parsed.patient
         self.patient_id = self.patient_id or parsed.patient_id
+        replacing_dvh=self.explicit[fx]
         self.explicit[fx] = True
         self.dvhs[fx] = parsed
         self.screenshots[fx] = None
-        self.ct_dates[fx] = ''
-        self.point_doses[fx] = {}
+        if replacing_dvh:
+            self.ct_dates[fx] = ''
+            self.point_doses[fx] = {}
+            self.point_records[fx] = []
+            self.point_source_dates[fx] = ''
         for dest in range(fx, self.count):
             if dest == fx or not self.explicit[dest]:
                 # MATLAB preserves existing metrics absent from the new file.
