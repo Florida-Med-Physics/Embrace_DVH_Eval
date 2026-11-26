@@ -60,23 +60,27 @@ class MetricTable(tk.Frame):
             box.bind('<<ComboboxSelected>>',lambda e,i=fx:app.set_modality(i))
             app.modality_vars.append(var);app.modality_boxes.append(box)
         for col in (6,7,8):self.cell(self.grid_frame,0,col,'',BG)
-        self.cell(self.grid_frame,1,0,'Fx date',BG).configure(anchor='center',justify='center')
+        self.cell(self.grid_frame,1,0,'CT date',BG).configure(anchor='center',justify='center')
+        for fx in range(5):
+            app.worksheet_ct_labels.append(self.cell(self.grid_frame,1,fx+1,'—',SURFACE))
+        for col in (6,7,8):self.cell(self.grid_frame,1,col,'',BG)
+        self.cell(self.grid_frame,2,0,'Fx date',BG).configure(anchor='center',justify='center')
         for fx in range(5):
             var=tk.StringVar()
             entry=tk.Entry(self.grid_frame,textvariable=var,bg=BLUE,fg=INK,
                 disabledbackground=INACTIVE,justify='center',relief='flat',borderwidth=0,
                 highlightthickness=0,width=1,font=(FONT,TEXT_SIZE))
-            entry.grid(row=1,column=fx+1,sticky='nsew',padx=(0,1),pady=(0,1))
+            entry.grid(row=2,column=fx+1,sticky='nsew',padx=(0,1),pady=(0,1))
             entry.bind('<Return>',app.edit_pending);entry.bind('<FocusOut>',app.edit_pending)
             app.fx_date_vars.append(var);app.fx_date_entries.append(entry)
-        for col in (6,7,8):self.cell(self.grid_frame,1,col,'',BG)
-        self.cell(self.grid_frame,2,0,'DVH name',BG).configure(anchor='center',justify='center')
+        for col in (6,7,8):self.cell(self.grid_frame,2,col,'',BG)
+        self.cell(self.grid_frame,3,0,'DVH name',BG).configure(anchor='center',justify='center')
         for fx in range(5):
-            label=self.cell(self.grid_frame,2,fx+1,'—',SURFACE)
+            label=self.cell(self.grid_frame,3,fx+1,'—',SURFACE)
             label.configure(justify='center',wraplength=110)
             app.worksheet_dvh_labels.append(label)
-        for col in (6,7,8):self.cell(self.grid_frame,2,col,'',BG)
-        row=3
+        for col in (6,7,8):self.cell(self.grid_frame,3,col,'',BG)
+        row=4
         def point_section(title,bg=HEADER):
             nonlocal row
             heading=self.cell(self.grid_frame,row,0,title,bg,True)
@@ -340,7 +344,7 @@ class App(tk.Tk):
         cards.pack(fill='x',padx=12,pady=0)
         self.buttons=[];self.file_labels=[];self.dvh_date_labels=[];self.source_dates=[];self.rp_date_labels=[];self.dicom_buttons=[];self.ct_date_labels=[];self.point_review_buttons=[];self.point_carry_labels=[];self.structure_review_buttons=[];self.structure_carry_labels=[]
         self.fraction_titles=[]
-        self.worksheet_dvh_labels=[]
+        self.worksheet_dvh_labels=[];self.worksheet_ct_labels=[]
         self.modality_vars=[];self.modality_boxes=[];self.fx_date_vars=[];self.fx_date_entries=[];self.fx_date_displayed=[]
         # All fractions share one grid: wrapped names expand the same row
         # across every fraction, instead of shifting individual card contents.
@@ -580,6 +584,8 @@ class App(tk.Tk):
         for fx,button in enumerate(self.dicom_buttons):
             button.configure(state='normal' if fx<c.count else 'disabled')
             self.ct_date_labels[fx].configure(text=(c.ct_dates[fx] or '—') if fx<c.count else '—',bg=SURFACE if fx<c.count else INACTIVE,fg=INK if fx<c.count else MUTED)
+            self.worksheet_ct_labels[fx].configure(text=self.ct_date_labels[fx].cget('text'),
+                bg=SURFACE if fx<c.count else INACTIVE,fg=INK if fx<c.count else MUTED)
         self.prior_vars[0].set(fmt(c.dose_per_fx))
         self.prior_vars[1].set(str(c.prior_fractions))
         self.prior_displayed=[v.get() for v in self.prior_vars]
