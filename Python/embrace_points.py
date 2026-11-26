@@ -1,12 +1,12 @@
 """Reference points in the supplied EMBRACE worksheet's order."""
 # key, label, physical-dose template row, alpha/beta
 POINTS = (
-    ('point_a_left','Point A left',31,10),
-    ('point_a_right','Point A right',33,10),
-    ('vaginal_left','Vaginal point left',93,3),
-    ('vaginal_right','Vaginal point right',95,3),
-    ('rectovaginal','Rectal / recto-vaginal point',65,3),
-    ('bladder_point','Bladder reference point',57,3),
+    ('point_a_left','Point A LT',31,10),
+    ('point_a_right','Point A RT',33,10),
+    ('vaginal_left','Vaginal LT',93,3),
+    ('vaginal_right','Vaginal RT',95,3),
+    ('rectovaginal','Rectal',65,3),
+    ('bladder_point','Bladder',57,3),
     ('vaginal','Vaginal point (unspecified)',None,None),
 )
 REFERENCE_KEYS=tuple(key for key,_,row,_ in POINTS if row is not None)

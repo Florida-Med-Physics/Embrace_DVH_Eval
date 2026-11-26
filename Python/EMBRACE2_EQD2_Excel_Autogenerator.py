@@ -50,7 +50,7 @@ class MetricTable(tk.Frame):
         self.headings=[]
         for col,text in enumerate(headings):
             label=self.cell(self.head_grid,0,col,text,HEADER,bold=True)
-            label.configure(height=2)
+            label.configure(height=0,font=(FONT,9,'bold'))
             self.headings.append(label)
         self.cell(self.grid_frame,0,0,'MR / CT',BG)
         for fx in range(5):
@@ -77,7 +77,8 @@ class MetricTable(tk.Frame):
             from embrace_points import POINTS
             for key,label,_,ab in POINTS:
                 if key not in keys:continue
-                self.cell(self.grid_frame,row,0,label+' [Gy]','white').configure(padx=36)
+                point_label=self.cell(self.grid_frame,row,0,label+' [Gy]','white')
+                point_label.configure(padx=20,height=1);point_label.compact_point_row=True
                 for fx in range(5):
                     var=tk.StringVar()
                     entry=tk.Entry(self.grid_frame,textvariable=var,bg=BLUE,fg=INK,disabledbackground=INACTIVE,
@@ -87,7 +88,8 @@ class MetricTable(tk.Frame):
                     app.point_inputs[key,fx]=var,entry
                 for col in (6,7,8):self.cell(self.grid_frame,row,col,'','white')
                 row+=1
-                self.cell(self.grid_frame,row,0,f'EQD2{ab} [Gy]','#fafbfc').configure(padx=36)
+                point_label=self.cell(self.grid_frame,row,0,f'EQD2{ab} [Gy]','#fafbfc')
+                point_label.configure(padx=20,height=1);point_label.compact_point_row=True
                 for fx in range(5):app.point_cells[key,fx]=self.cell(self.grid_frame,row,fx+1,'','#fafbfc')
                 app.point_totals[key]=self.cell(self.grid_frame,row,6,'','white',bold=True)
                 for col in (7,8):self.cell(self.grid_frame,row,col,'','#fafbfc')
@@ -149,13 +151,22 @@ class MetricTable(tk.Frame):
     def resize(self,event):
         # Identical pixel widths ensure header/body alignment at any window size.
         self.canvas.itemconfigure(self.window,width=event.width)
-        proportions=[225,70,70,70,70,70,135,105,105]
-        if self.cylinder: proportions=[225,70,70,70,70,70,135,0,0]
+        proportions=[185,118,118,118,118,118,115,95,95]
+        if self.cylinder: proportions=[185,118,118,118,118,118,115,0,0]
         widths=[int(event.width*w/sum(proportions)) for w in proportions]
         widths[0]+=event.width-sum(widths)
         for grid in (self.head_grid,self.grid_frame,self.app.fraction_grid):
             for col,width in enumerate(widths):
                 grid.columnconfigure(col,minsize=width,weight=0)
+        for label in self.grid_frame.grid_slaves(column=0):
+            if isinstance(label,tk.Label) and int(label.grid_info().get('columnspan',1))==1:
+                if getattr(label,'compact_point_row',False):
+                    label.configure(wraplength=0,height=1)
+                else:
+                    label.configure(wraplength=max(80,widths[0]-2*int(label.cget('padx'))-4),height=0)
+        self.headings[0].configure(text='Structure / dose\nparameter')
+        for col,label in enumerate(self.headings):
+            label.configure(wraplength=max(40,widths[col]-12),height=0)
 
     def bind_wheel(self,widget):
         def wheel(event):
@@ -226,8 +237,8 @@ class App(tk.Tk):
         # Course setup occupies the top third; the constraint tables get the rest.
         self.top=tk.Frame(self.dashboard,bg=FRAME)
         top=tk.Frame(self.top,bg=FRAME)
-        top.pack(fill='x',padx=12,pady=(6,4))
-        tk.Label(top,text=self.course.title+'  Course Dashboard',bg=FRAME,fg='white',font=(TITLE_FONT,16,'bold')).pack(side='left')
+        top.pack(fill='x',padx=12,pady=(2,2))
+        tk.Label(top,text=self.course.title+'  Course Dashboard',bg=FRAME,fg='white',font=(TITLE_FONT,14,'bold')).pack(side='left')
         tk.Label(top,text='UFHPTI',bg=FRAME,fg='#fa4a00',font=(FONT,12,'bold')).pack(side='right')
         self.patient=tk.Label(top,bg=FRAME,fg='white',font=(FONT,10),anchor='e')
         self.patient.pack(side='right',padx=16)
@@ -255,13 +266,14 @@ class App(tk.Tk):
         for row,label in enumerate(('DVH file','Plan DICOMs','DVH txt','RP + RD files','CT.dcm')):
             cell=MetricTable.cell(cards,row,0,label,BG,row in (0,1))
             cell.configure(width=1,font=(FONT,9,'bold' if row in (0,1) else 'normal'))
+            cell.configure(anchor='e',justify='right',padx=10,bg=FRAME,fg='white')
             if row in (2,3,4):
                 cell.configure(bg=FRAME,fg='white');cell.grid_configure(padx=0,pady=0)
         self.buttons=[];self.file_labels=[];self.source_dates=[];self.dicom_buttons=[];self.ct_date_labels=[];self.point_review_buttons=[]
         self.modality_vars=[];self.modality_boxes=[]
         for fx in range(5):
-            button=ttk.Button(cards,text=f'Load Fx{fx+1}\nDVH.txt',width=1,style='Compact.Load.TButton',command=lambda i=fx:self.load(i))
-            button.grid(row=0,column=fx+1,sticky='ew',padx=4,pady=1)
+            button=ttk.Button(cards,text=f'Load Fx{fx+1} DVH.txt',width=1,style='File.Load.TButton',command=lambda i=fx:self.load(i))
+            button.grid(row=0,column=fx+1,sticky='ew',padx=2,pady=1)
             self.buttons.append(button)
             name=MetricTable.cell(cards,2,fx+1,'No DVH loaded','white')
             name.configure(font=(FONT,9),height=1,anchor='center',justify='center',padx=8)
@@ -271,8 +283,8 @@ class App(tk.Tk):
             self.source_dates.append(MetricTable.cell(cards,3,fx+1,'—','white'))
             self.source_dates[-1].configure(height=0,anchor='center',justify='center')
             self.source_dates[-1].bind('<Configure>',lambda e:e.widget.configure(wraplength=max(50,e.width-16)))
-            dicom=ttk.Button(cards,text=f'Load Fx{fx+1}\nPlan DICOMS',width=1,style='Compact.Load.TButton',command=lambda i=fx:self.load_dicoms(i))
-            dicom.grid(row=1,column=fx+1,sticky='ew',padx=4,pady=1)
+            dicom=ttk.Button(cards,text=f'Load Fx{fx+1} DICOM',width=1,style='File.Load.TButton',command=lambda i=fx:self.load_dicoms(i))
+            dicom.grid(row=1,column=fx+1,sticky='ew',padx=2,pady=1)
             self.dicom_buttons.append(dicom)
             self.ct_date_labels.append(MetricTable.cell(cards,4,fx+1,'—','white'))
             for label in (self.source_dates[-1],self.ct_date_labels[-1]):label.grid_configure(padx=0,pady=0)
@@ -293,12 +305,12 @@ class App(tk.Tk):
         self.image_status=tk.Label(attachments,text='',bg=BG,fg=MUTED,font=(FONT,8))
         self.image_status.pack(side='left',padx=6)
         self.show_files=tk.BooleanVar(value=True)
-        bt_heading=tk.Label(self.top,text='BRACHYTHERAPY',bg=FRAME,fg='white',font=(FONT,12,'bold'),anchor='w')
-        bt_heading.pack(fill='x',padx=14,pady=(8,3),before=controls)
+        bt_heading=tk.Label(self.top,text='BRACHYTHERAPY',bg=FRAME,fg='white',font=(FONT,10,'bold'),anchor='w')
+        bt_heading.pack(fill='x',padx=14,pady=(4,1),before=controls)
         self.prior_frame=tk.Frame(self.top,bg='#d3d8dc')
         self.prior_frame.pack(fill='x',padx=12,pady=(0,2),before=bt_heading)
-        ebrt_heading=tk.Label(self.top,text='EXTERNAL BEAM THERAPY',bg=FRAME,fg='white',font=(FONT,12,'bold'),anchor='w')
-        ebrt_heading.pack(fill='x',padx=14,pady=(3,3),before=self.prior_frame)
+        ebrt_heading=tk.Label(self.top,text='EXTERNAL BEAM THERAPY',bg=FRAME,fg='white',font=(FONT,10,'bold'),anchor='w')
+        ebrt_heading.pack(fill='x',padx=14,pady=(1,1),before=self.prior_frame)
         for col,(title,weight) in enumerate((('Parameter',4),('Value',1),('Tumour EQD2₁₀ [Gy]',2),('OAR EQD2₃ [Gy]',2))):
             MetricTable.cell(self.prior_frame,0,col,title,HEADER,True)
             self.prior_frame.columnconfigure(col,weight=0,minsize=(290,90,195,185)[col])
@@ -317,6 +329,9 @@ class App(tk.Tk):
             self.prior_frame.columnconfigure(col,weight=1,uniform='ebrt_blank')
             for row in range(4):
                 MetricTable.cell(self.prior_frame,row,col,'','white')
+        for widget in self.prior_frame.winfo_children():
+            current=str(widget.cget('font'))
+            widget.configure(font=(FONT,9,'bold' if 'bold' in current else 'normal'))
         if self.course.mode=='Cylinder':
             self.prior_frame.pack_forget();ebrt_heading.pack_forget()
         body=MetricTable(self.dashboard,self,'DOSE / EQD2',self.course.structures,None)
@@ -331,7 +346,7 @@ class App(tk.Tk):
         self.dashboard.rowconfigure(1,weight=1)
         self.chooser.lift()
         self.top.update_idletasks()
-        self.dashboard.rowconfigure(0,minsize=self.top.winfo_reqheight())
+        self.dashboard.rowconfigure(0,minsize=0)
         ttk.Button(footer,text='Export Excel',command=self.export,width=14).pack(side='right',padx=(10,8),pady=5)
         ttk.Button(footer,text='Export PDF',command=self.export_report,width=14).pack(side='right',padx=(10,0),pady=5)
         ttk.Button(footer,text='Clear all',command=self.clear,width=10).pack(side='right',padx=(10,0),pady=5)
