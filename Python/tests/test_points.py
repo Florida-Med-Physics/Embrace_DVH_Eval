@@ -59,6 +59,22 @@ class PointTests(unittest.TestCase):
         self.assertIsNone(suggest_point('P1','Vaginal points'))
         self.assertIsNone(suggest_point('Point A left right'))
 
+    def test_vaginal_laterality_aliases(self):
+        from embrace_points import POINTS
+        self.assertNotIn('vaginal',[key for key,*_ in POINTS])
+        for side,shorts in (('left',('L','Lt','Left')),('right',('R','Rt','Right'))):
+            for stem in ('Vag','Vagina','Vaginal','Vaginal_point'):
+                for short in shorts:
+                    for separator in ('_',' ','-',''):
+                        name=stem+separator+short
+                        with self.subTest(name=name):
+                            self.assertEqual(suggest_point(name,'VagPoints'),'vaginal_'+side)
+                            self.assertEqual(suggest_point(name+' Fx3'),'vaginal_'+side)
+            for short in shorts:
+                self.assertEqual(suggest_point(short,'VagPoints'),'vaginal_'+side)
+        for name in ('Vag','Vaginal point','Vagina point','P1','P2','Vag_L_R','Vag left right'):
+            self.assertIsNone(suggest_point(name,'VagPoints'))
+
     def write(self,path,modality,uid):
         meta=FileMetaDataset();meta.TransferSyntaxUID=ExplicitVRLittleEndian
         meta.MediaStorageSOPClassUID=RTDoseStorage if modality=='RTDOSE' else RTPlanStorage

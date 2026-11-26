@@ -146,7 +146,6 @@ def export_pdf(course, output, fraction=0, worksheet_only=False):
             commands.append(('BACKGROUND',(0,r),(-1,r),colors.HexColor('#cfa2ff')))
             rows.append(['Point source date (RD)']+[p(course.point_source_dates[i] or 'Not imported',small) for i in range(n)]+['']*4)
             point_rows(REFERENCE_KEYS)
-            if any(course.point_doses[i].get('vaginal') is not None for i in range(n)):point_rows(('vaginal',))
             commands.append(('NOSPLIT',(0,reference_start),(-1,len(rows)-1)))
         if course.mode=='Cylinder':
             rows=[row[:n+2] for row in rows]

@@ -7,7 +7,6 @@ POINTS = (
     ('vaginal_right','Vaginal RT',95,3),
     ('rectovaginal','Rectal',65,3),
     ('bladder_point','Bladder',57,3),
-    ('vaginal','Vaginal point (unspecified)',None,None),
 )
 REFERENCE_KEYS=tuple(key for key,_,row,_ in POINTS if row is not None)
 
@@ -29,11 +28,18 @@ def suggest_point(name, group=''):
         'rectovaginal':['rectovaginal','rectovaginalpoint','rectovaginalreferencepoint','rvpoint','rectalpoint','rectumpoint','rectalreferencepoint'],
         'vaginal_left':['vagina5mmleft','vaginal5mmleft','5mmleft','vaginalpointleft','vaginalleft','vaginalpointl','vaginall'],
         'vaginal_right':['vagina5mmright','vaginal5mmright','5mmright','vaginalpointright','vaginalright','vaginalpointr','vaginalr'],
-        'vaginal':['vaginalpoint','vaginapoint'],
     }
+    # Explicit vaginal laterality abbreviations are exact aliases, not fuzzy
+    # guesses. Unnumbered/unsided points remain unassigned for review.
+    for side,shorts in (('left',('l','lt','left')),('right',('r','rt','right'))):
+        aliases['vaginal_'+side].extend(
+            stem+point+short
+            for stem in ('vag','vagina','vaginal')
+            for point in ('','point') for short in shorts)
     group_name=norm(group)
-    if group_name in ('vaginalpoints','vaginalpoint','vaginapoints') and n in ('l','left','r','right'):
-        return 'vaginal_left' if n in ('l','left') else 'vaginal_right'
+    if group_name in ('vagpoints','vagpoint','vaginalpoints','vaginalpoint','vaginapoints','vaginapoint'):
+        if n in ('l','lt','left'):return 'vaginal_left'
+        if n in ('r','rt','right'):return 'vaginal_right'
     # A dash is punctuation except for the signed PIBS offsets.
     if not n.startswith('pibs'): n=n.replace('-','').replace('+','')
     for key,values in aliases.items():

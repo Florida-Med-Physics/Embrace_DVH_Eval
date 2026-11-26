@@ -89,10 +89,10 @@ class ReportDetailsTests(unittest.TestCase):
     def test_manual_report_details(self):
         c=Course()
         dates=['2026-11-19']*c.count
-        doses=[{'rectovaginal':'3.25','point_a_left':'7','point_a_right':'7.1','vaginal':''} for _ in dates]
+        doses=[{'rectovaginal':'3.25','point_a_left':'7','point_a_right':'7.1','vaginal_left':''} for _ in dates]
         c.set_report_details(dates,doses)
         self.assertEqual(c.point_doses[0]['rectovaginal'],3.25)
-        self.assertIsNone(c.point_doses[0]['vaginal'])
+        self.assertIsNone(c.point_doses[0]['vaginal_left'])
         with self.assertRaises(ValueError):c.set_report_details(['invalid']*c.count,doses)
         self.assertEqual(c.ct_dates[0],'2026-11-19')
         c.set_count(3)
