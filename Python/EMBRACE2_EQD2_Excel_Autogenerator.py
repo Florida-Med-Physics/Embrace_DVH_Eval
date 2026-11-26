@@ -21,7 +21,7 @@ class MetricTable(tk.Frame):
     def __init__(self, parent, app, title, definitions, target):
         super().__init__(parent,bg=FRAME)
         self.app = app
-        tk.Label(self,text=title,bg=FRAME,fg='white',font=(FONT,12,'bold'),anchor='w').pack(fill='x',pady=(3,3))
+        tk.Label(self,text=title,bg=FRAME,fg='white',font=(FONT,12,'bold'),anchor='nw',pady=0,borderwidth=0).pack(fill='x',pady=0)
         self.header = tk.Frame(self,bg=HEADER)
         self.header.pack(fill='x')
         outer = tk.Frame(self,bg='white')
@@ -262,11 +262,12 @@ class App(tk.Tk):
         self.rx_summary.pack(side='left')
         cards=tk.Frame(self.top,bg=FRAME)
         self.fraction_grid=cards
-        cards.pack(fill='x',padx=12,pady=(0,2))
-        for row,label in enumerate(('DVH file','Plan DICOMs','DVH txt','RP + RD files','CT.dcm')):
+        cards.pack(fill='x',padx=12,pady=0)
+        for row,label in enumerate(('DVH file','Plan DICOMs','DVH txt','RP + RD files','CT')):
             cell=MetricTable.cell(cards,row,0,label,BG,row in (0,1))
             cell.configure(width=1,font=(FONT,9,'bold' if row in (0,1) else 'normal'))
             cell.configure(anchor='e',justify='right',padx=10,bg=FRAME,fg='white')
+            if row==4:cell.configure(anchor='se',borderwidth=0,pady=0)
             if row in (2,3,4):
                 cell.configure(bg=FRAME,fg='white');cell.grid_configure(padx=0,pady=0)
         self.buttons=[];self.file_labels=[];self.source_dates=[];self.dicom_buttons=[];self.ct_date_labels=[];self.point_review_buttons=[]
@@ -287,6 +288,7 @@ class App(tk.Tk):
             dicom.grid(row=1,column=fx+1,sticky='ew',padx=2,pady=1)
             self.dicom_buttons.append(dicom)
             self.ct_date_labels.append(MetricTable.cell(cards,4,fx+1,'—','white'))
+            self.ct_date_labels[-1].configure(anchor='s',borderwidth=0,pady=0,font=(FONT,9))
             for label in (self.source_dates[-1],self.ct_date_labels[-1]):label.grid_configure(padx=0,pady=0)
         attachments=tk.Frame(controls,bg=BG,padx=0,pady=0)
         attachments.pack(side='left',before=count)
