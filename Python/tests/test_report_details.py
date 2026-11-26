@@ -30,6 +30,28 @@ class ReportDetailsTests(unittest.TestCase):
             self.assertEqual(c.modalities[3],'MRI + CT');self.assertIsNone(c.screenshots[3]);self.assertIsNone(c.dvhs[3])
             c.screenshots[0]=b'image';c.load(0,path);self.assertIsNone(c.screenshots[0])
 
+    def test_editable_fraction_dates(self):
+        from unittest.mock import patch
+        with tempfile.TemporaryDirectory() as tmp:
+            path=Path(tmp)/'source.txt'
+            path.write_text('Dose [Gy]\nCumulative mode\nROI: Bladder\n0 10\n5 2\n10 0\n')
+            c=Course()
+            with patch('embrace_core.file_creation_date',return_value='2026-08-31'):
+                c.load(0,path)
+            self.assertEqual(c.fx_dates[:4],['2026-08-31']*4)
+            c.set_fx_date(1,'2026-09-02')
+            with patch('embrace_core.file_creation_date',return_value='2026-09-01'):
+                c.load(0,path)
+            self.assertEqual(c.fx_dates[:4],['2026-09-01','2026-09-02','2026-09-01','2026-09-01'])
+            c.set_fx_date(0,'')
+            c.set_count(5)
+            self.assertEqual(c.fx_dates[4],'')
+            c.set_count(3)
+            self.assertEqual(c.fx_dates[3:],['',''])
+            self.assertEqual(c.fx_date_edited[3:],[False,False])
+            with self.assertRaises(ValueError):c.set_fx_date(1,'2026-02-30')
+            self.assertEqual(c.fx_dates[1],'2026-09-02')
+
     def test_txt_source_date(self):
         with tempfile.TemporaryDirectory() as tmp:
             path=Path(tmp)/'source.txt'

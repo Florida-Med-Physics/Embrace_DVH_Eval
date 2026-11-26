@@ -56,7 +56,7 @@ def export_workbook(course, template, output):
     # Generic left/right vaginal points do not establish a 5 mm depth.
     updates.update({'B93':'Vaginal point left','B95':'Vaginal point right'})
     for fx,col in enumerate('CDEFGH'):
-        updates[f'{col}15']=course.point_source_dates[fx] if fx<course.count else None
+        updates[f'{col}15']=course.fx_dates[fx] if fx<course.count else None
         updates[f'{col}18']=course.modalities[fx] if fx<course.count else None
     temporary = None
     try:
@@ -98,7 +98,8 @@ def export_cylinder_workbook(course, output):
     rows=[['PORTEC-4 EQD2'],['Patient',course.patient,'ID',course.patient_id],
           ['Prescription [Gy / Fx]',course.prescription_gy,'Fractions',n],
           ['Structure / dose parameter']+[f'Fx {i+1}' for i in range(n)]+['Total BT EQD2 [Gy]']]
-    input_rows=set();headers={1,4}
+    rows.extend([['MR / CT']+course.modalities[:n],['Fx date']+course.fx_dates[:n]])
+    input_rows={6};headers={1,4}
     for title,key,metrics in course.structures:
         rows.append([title]);headers.add(len(rows))
         for metric in metrics:

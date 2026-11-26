@@ -151,6 +151,9 @@ class DVH:
     volume_unit: str = 'cc'
     curves: dict = field(default_factory=dict)
     source_date: str = ''
+    source_text: str = ''
+    structure_matches: dict = field(default_factory=dict)
+    volumes_cc: dict = field(default_factory=dict)
 
     def metrics_at_prescription(self, prescription):
         result = self.metrics.copy()
@@ -167,15 +170,22 @@ def file_creation_date(path):
     return datetime.fromtimestamp(timestamp).date().isoformat() if timestamp is not None else ''
 
 
-def parse_dvh(path, prescription_gy=None, volumes_cc=None, mode="GYN"):
+def parse_dvh(path, prescription_gy=None, volumes_cc=None, mode="GYN", structure_matches=None, source_text=None, source_date=None):
     """Read indexed or two-column cumulative DVHs with explicit axis units.
 
     Percent dose uses the user-selected per-fraction prescription. Percent
     volume requires an explicit cc volume in the ROI metadata or user input.
     Older app-compatible files without a volume-axis header retain cc units.
     """
-    raw = Path(path).read_bytes()
-    text = raw.decode('utf-16' if raw.startswith((b'\xff\xfe', b'\xfe\xff')) else 'utf-8-sig')
+    if source_text is None:
+        raw = Path(path).read_bytes()
+        text = raw.decode('utf-16' if raw.startswith((b'\xff\xfe', b'\xfe\xff')) else 'utf-8-sig')
+    else:text=source_text
+    if structure_matches is not None:
+        targets=[v for v in structure_matches.values() if v]
+        allowed={key for _,key,_ in (CYLINDER_STRUCTURES if mode=='Cylinder' else STRUCTURES)}
+        if len(targets)!=len(set(targets)):raise ValueError('Each worksheet structure can only be assigned once.')
+        if any(v not in allowed for v in targets):raise ValueError('Unknown worksheet structure.')
     if not re.search(r'Cumulative mode', text, re.I):
         raise ValueError('This app expects a cumulative DVH export.')
     numeric = r'([-+]?\d*\.?\d+(?:[Ee][-+]?\d+)?)'
@@ -204,6 +214,8 @@ def parse_dvh(path, prescription_gy=None, volumes_cc=None, mode="GYN"):
         raise ValueError('No ROI sections were found.')
     metrics, ratios, ignored, missing = {}, {}, [], []
     curves = {}
+    resolved={}
+    known_volumes=dict(volumes_cc or {})
     for name, body in zip(parts[1::2], parts[2::2]):
         name = name.strip()
         key = structure_key(name)
@@ -211,6 +223,8 @@ def parse_dvh(path, prescription_gy=None, volumes_cc=None, mode="GYN"):
             compact=re.sub(r'[^a-z0-9]','',re.sub(r'(?:fx|fraction|frac|plan)\s*[_ -]*\d+','',name.casefold()))
             if compact in ('ctv','clinicaltargetvolume') or key=='ctvhr': key='ctvhr'
             elif key in ('ctvir','gtvres'): key=None
+        if structure_matches is not None:key=structure_matches.get(name)
+        resolved[name]=None
         rows = [(float(d), float(v)) for d,v in re.findall(r'^[ \t]*(?:\d+[ \t]+)?'+numeric+r'[ \t]+'+numeric+r'[ \t]*\r?$', body, re.M)]
         if not key or not rows:
             ignored.append(name)
@@ -233,6 +247,10 @@ def parse_dvh(path, prescription_gy=None, volumes_cc=None, mode="GYN"):
             rows = [(d,v*total/100) for d,v in rows]
         else:
             total = max(v for _,v in rows)
+        known_volumes[name]=total
+        for prior,target_key in resolved.items():
+            if target_key==key:resolved[prior]=None
+        resolved[name]=key
         # Calculate relative dose ratios before rounding; repeated changes of
         # prescription always use the original ratios, avoiding scaling drift.
         scale = .01 if dose_unit in ('cgy','%') else 1
@@ -255,10 +273,10 @@ def parse_dvh(path, prescription_gy=None, volumes_cc=None, mode="GYN"):
                 metrics[metric_key] = number(value)
     if missing:
         raise MissingVolumeError(missing)
-    if not metrics:
+    if not metrics and structure_matches is None:
         raise ValueError('No recognized EMBRACE-2 structures with numeric DVH data were found.')
     return DVH(header('Patient'),header('Patient Id'),header('Plan'),metrics,ignored,ratios,dose_unit,volume_unit,curves,
-               file_creation_date(path))
+               file_creation_date(path) if source_date is None else source_date,text,resolved,known_volumes)
 
 
 @dataclass
@@ -277,6 +295,8 @@ class Course:
     modalities: list = field(default_factory=lambda: ['MRI + CT']*5)
     dvhs: list = field(default_factory=lambda: [None]*5)
     screenshots: list = field(default_factory=lambda: [None]*5)
+    fx_dates: list = field(default_factory=lambda: ['']*5)
+    fx_date_edited: list = field(default_factory=lambda: [False]*5)
     ct_dates: list = field(default_factory=lambda: ['']*5)
     rp_names: list = field(default_factory=lambda: ['']*5)
     rp_dates: list = field(default_factory=lambda: ['']*5)
@@ -286,6 +306,34 @@ class Course:
     point_explicit: list = field(default_factory=lambda: [False]*5)
     point_sources: list = field(default_factory=lambda: [None]*5)
     relative_doses: list = field(default_factory=lambda: [{} for _ in range(5)])
+
+    def rematch_structures(self, fx, matches, volumes_cc=None):
+        if not 0<=fx<self.count or self.dvhs[fx] is None:
+            raise ValueError('Load this fraction’s DVH before reviewing structures.')
+        old=self.dvhs[fx]
+        parsed=parse_dvh(None,self.prescription_gy,{**old.volumes_cc,**(volumes_cc or {})},self.mode,
+                         structure_matches=matches,source_text=old.source_text,source_date=old.source_date)
+        for dest in range(fx,self.count):
+            if dest==fx or not self.explicit[dest]:
+                for key in old.metrics:
+                    self.values[dest].pop(key,None)
+                    self.relative_doses[dest].pop(key,None)
+                self.values[dest].update(parsed.metrics)
+                self.relative_doses[dest].update(parsed.relative_doses)
+        self.dvhs[fx]=parsed
+        return parsed
+
+    def set_fx_date(self, fx, value):
+        if not 0 <= fx < self.count:raise ValueError('Inactive fraction.')
+        value=value.strip()
+        if value:
+            try:
+                parsed=datetime.strptime(value,'%Y-%m-%d').date().isoformat()
+            except ValueError:
+                raise ValueError(f'Fx {fx+1}: enter the date as YYYY-MM-DD.') from None
+            if parsed!=value:raise ValueError(f'Fx {fx+1}: enter the date as YYYY-MM-DD.')
+        self.fx_dates[fx]=value
+        self.fx_date_edited[fx]=True
 
     def set_points(self, fx, records, source_date):
         """Import/review points and carry into later fractions without their own points."""
@@ -394,6 +442,7 @@ class Course:
         self.dose_per_fx, self.prior_fractions = number(d), math.floor(n+.5)
 
     def copy(self, src, dest):
+        if not self.fx_date_edited[dest]:self.fx_dates[dest]=self.fx_dates[src]
         self.values[dest] = self.values[src].copy()
         self.relative_doses[dest] = self.relative_doses[src].copy()
         self.plans[dest] = self.plans[src]
@@ -412,6 +461,8 @@ class Course:
                 self.modalities[fx] = 'MRI + CT'
                 self.dvhs[fx] = None
                 self.screenshots[fx] = None
+                self.fx_dates[fx] = ''
+                self.fx_date_edited[fx] = False
                 self.ct_dates[fx] = ''
                 self.rp_names[fx] = self.rp_dates[fx] = ''
                 self.point_doses[fx] = {}
@@ -455,6 +506,7 @@ class Course:
         for dest in range(fx, self.count):
             if dest == fx or not self.explicit[dest]:
                 # MATLAB preserves existing metrics absent from the new file.
+                if not self.fx_date_edited[dest]:self.fx_dates[dest]=parsed.source_date or ''
                 self.values[dest].update(parsed.metrics)
                 for key in parsed.metrics:
                     self.relative_doses[dest].pop(key,None)

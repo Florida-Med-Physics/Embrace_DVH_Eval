@@ -23,6 +23,9 @@ class PDFPreviewTab(tk.Frame):
         self.resize_job=None
         tk.Label(self,text='PDF PREVIEW',bg=FRAME,fg='white',font=(TITLE_FONT,18,'bold'),anchor='w').pack(fill='x',padx=12,pady=(12,10))
         bar=tk.Frame(self,bg=BG,padx=8,pady=5);bar.pack(fill='x',padx=12,pady=(0,6))
+        self.snip_button=ttk.Button(bar,text='Snip Screen',style='Primary.TButton',command=lambda:app.add_screenshot(True))
+        self.snip_button.pack(side='left')
+        ttk.Label(bar,textvariable=app.image_fx).pack(side='left',padx=10)
         ttk.Button(bar,text='Export PDF',command=app.export_report).pack(side='right')
         self.status=tk.StringVar(value='Load a fraction TXT to preview its report.')
         tk.Label(self,textvariable=self.status,bg=FRAME,fg='white',font=(FONT,9),anchor='w',justify='left',wraplength=1000).pack(fill='x',padx=12,pady=(0,5))

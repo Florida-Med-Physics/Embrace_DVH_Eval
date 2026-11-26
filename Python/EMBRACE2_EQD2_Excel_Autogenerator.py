@@ -3,14 +3,14 @@
 from copy import deepcopy
 from pathlib import Path
 import tkinter as tk
-from tkinter import ttk, filedialog, messagebox
+from tkinter import ttk, filedialog, messagebox, font as tkfont
 from embrace_core import Course, STRUCTURES, eqd2, fmt, status
 from embrace_export import export_workbook
 from embrace_import import import_with_volumes
 from embrace_pdf import export_pdf
 from embrace_comparison import ComparisonTab
 
-from embrace_theme import BG, SURFACE, ALT, HEADER, INK, MUTED, BLUE, INPUT_INK, INACTIVE, COLORS, FONT, TITLE_FONT, apply_theme
+from embrace_theme import BG, SURFACE, ALT, HEADER, INK, MUTED, BLUE, INPUT_INK, INACTIVE, COLORS, FONT, TITLE_FONT, TEXT_SIZE, apply_theme
 
 
 FRAME = '#202326'
@@ -21,7 +21,7 @@ class MetricTable(tk.Frame):
     def __init__(self, parent, app, title, definitions, target):
         super().__init__(parent,bg=FRAME)
         self.app = app
-        tk.Label(self,text=title,bg=FRAME,fg='white',font=(FONT,10,'bold'),anchor='nw',pady=0,borderwidth=0).pack(fill='x',pady=0)
+        tk.Label(self,text=title,bg=FRAME,fg='white',font=(FONT,TEXT_SIZE,'bold'),anchor='nw',pady=0,borderwidth=0).pack(fill='x',pady=0)
         self.header = tk.Frame(self,bg=HEADER)
         self.header.pack(fill='x')
         outer = tk.Frame(self,bg='white')
@@ -50,17 +50,27 @@ class MetricTable(tk.Frame):
         self.headings=[]
         for col,text in enumerate(headings):
             label=self.cell(self.head_grid,0,col,text,HEADER,bold=True)
-            label.configure(height=0,font=(FONT,9,'bold'))
+            label.configure(height=0,font=(FONT,TEXT_SIZE,'bold'))
             self.headings.append(label)
         self.cell(self.grid_frame,0,0,'MR / CT',BG).configure(anchor='center',justify='center')
         for fx in range(5):
             var=tk.StringVar()
-            box=ttk.Combobox(self.grid_frame,textvariable=var,values=['','MRI','CT','MRI + CT'],state='readonly',width=1)
+            box=ttk.Combobox(self.grid_frame,textvariable=var,values=['','MRI','CT','MRI + CT'],state='readonly',width=1,justify='center')
             box.grid(row=0,column=fx+1,sticky='ew',padx=(0,1),pady=(0,1))
             box.bind('<<ComboboxSelected>>',lambda e,i=fx:app.set_modality(i))
             app.modality_vars.append(var);app.modality_boxes.append(box)
         for col in (6,7,8):self.cell(self.grid_frame,0,col,'',BG)
-        row=1
+        self.cell(self.grid_frame,1,0,'Fx date',BG).configure(anchor='center',justify='center')
+        for fx in range(5):
+            var=tk.StringVar()
+            entry=tk.Entry(self.grid_frame,textvariable=var,bg=BLUE,fg=INK,
+                disabledbackground=INACTIVE,justify='center',relief='flat',borderwidth=0,
+                highlightthickness=0,width=1,font=(FONT,TEXT_SIZE))
+            entry.grid(row=1,column=fx+1,sticky='nsew',padx=(0,1),pady=(0,1))
+            entry.bind('<Return>',app.edit_pending);entry.bind('<FocusOut>',app.edit_pending)
+            app.fx_date_vars.append(var);app.fx_date_entries.append(entry)
+        for col in (6,7,8):self.cell(self.grid_frame,1,col,'',BG)
+        row=2
         def point_section(title,bg=HEADER):
             nonlocal row
             heading=self.cell(self.grid_frame,row,0,title,bg,True)
@@ -70,7 +80,7 @@ class MetricTable(tk.Frame):
                 review.grid(row=row,column=fx+1,sticky='nsew',padx=1,pady=(8,2))
                 app.point_review_buttons.append(review)
                 carried=self.cell(self.grid_frame,row,fx+1,'',bg)
-                carried.configure(font=(FONT,9),justify='center')
+                carried.configure(font=(FONT,TEXT_SIZE),justify='center')
                 carried.grid_configure(pady=(8,2))
                 carried.grid_remove()
                 app.point_carry_labels.append(carried)
@@ -87,7 +97,7 @@ class MetricTable(tk.Frame):
                 for fx in range(5):
                     var=tk.StringVar()
                     entry=tk.Entry(self.grid_frame,textvariable=var,bg=BLUE,fg=INK,disabledbackground=INACTIVE,
-                                   justify='center',relief='flat',borderwidth=0,highlightthickness=0,width=1,font=(FONT,10))
+                                   justify='center',relief='flat',borderwidth=0,highlightthickness=0,width=1,font=(FONT,TEXT_SIZE))
                     entry.grid(row=row,column=fx+1,sticky='nsew',padx=1,pady=0)
                     entry.bind('<Return>',app.edit_pending);entry.bind('<FocusOut>',app.edit_pending)
                     app.point_inputs[key,fx]=var,entry
@@ -100,8 +110,22 @@ class MetricTable(tk.Frame):
                 for col in (7,8):self.cell(self.grid_frame,row,col,'','#fafbfc')
                 row+=1
         for title,key,metrics in definitions:
-            section=tk.Label(self.grid_frame,text=title,bg=HEADER,fg=INK,anchor='w',font=(FONT,10,'bold'),padx=7,pady=0)
-            section.grid(row=row,column=0,columnspan=9,sticky='nsew',pady=(8 if row else 0,2))
+            if key==definitions[0][1]:
+                section=self.cell(self.grid_frame,row,0,title,HEADER,True)
+                section.grid_configure(pady=(8,2))
+                for fx in range(5):
+                    button=ttk.Button(self.grid_frame,text=f'Review Fx{fx+1}\nROI matches',width=1,
+                        style='Structure.Load.TButton',command=lambda i=fx:app.review_structure_matches(i))
+                    button.grid(row=row,column=fx+1,sticky='nsew',padx=1,pady=(8,2))
+                    app.structure_review_buttons.append(button)
+                    label=self.cell(self.grid_frame,row,fx+1,'',HEADER)
+                    label.configure(font=(FONT,TEXT_SIZE),justify='center')
+                    label.grid_configure(pady=(8,2));label.grid_remove()
+                    app.structure_carry_labels.append(label)
+                for col in (6,7,8):self.cell(self.grid_frame,row,col,'',HEADER).grid_configure(pady=(8,2))
+            else:
+                section=tk.Label(self.grid_frame,text=title,bg=HEADER,fg=INK,anchor='w',font=(FONT,TEXT_SIZE,'bold'),padx=7,pady=0)
+                section.grid(row=row,column=0,columnspan=9,sticky='nsew',pady=(8 if row else 0,2))
             row+=1
             for metric in metrics:
                 k=f'{key}_{metric.key}'
@@ -113,7 +137,7 @@ class MetricTable(tk.Frame):
                         var=tk.StringVar()
                         entry=tk.Entry(self.grid_frame,textvariable=var,bg=BLUE,fg=INK,
                                        disabledbackground='#eef0f2',disabledforeground='#7b858f',
-                                       justify='center',relief='flat',borderwidth=0,width=1,font=(FONT,10),
+                                       justify='center',relief='flat',borderwidth=0,width=1,font=(FONT,TEXT_SIZE),
                                        highlightthickness=1,highlightbackground=BLUE,highlightcolor='#327ca5')
                         entry.grid(row=row,column=fx+1,sticky='nsew',padx=1,pady=0)
                         entry.bind('<Return>',app.edit_pending)
@@ -149,7 +173,7 @@ class MetricTable(tk.Frame):
     @staticmethod
     def cell(parent,row,col,text,bg,bold=False):
         label=tk.Label(parent,text=text,bg=bg,fg=INK,anchor='w' if col == 0 else 'center',
-                       font=(FONT,10,'bold' if bold else 'normal'),padx=5,pady=0,width=1)
+                       font=(FONT,TEXT_SIZE,'bold' if bold else 'normal'),padx=5,pady=0,width=1)
         parent.rowconfigure(row,minsize=getattr(parent.winfo_toplevel(),'table_row_height',0))
         label.grid(row=row,column=col,sticky='nsew',padx=(0,1),pady=(0,1))
         return label
@@ -164,6 +188,27 @@ class MetricTable(tk.Frame):
         for grid in (self.head_grid,self.grid_frame,self.app.fraction_grid,self.app.prior_frame):
             for col,width in enumerate(widths):
                 grid.columnconfigure(col,minsize=width,weight=0)
+        # Wrap controls at the shared text size rather than shrinking their fonts.
+        button_font=tkfont.Font(self,font=(FONT,TEXT_SIZE,'bold'))
+        def wrap(text,width):
+            lines=[];line=''
+            for word in text.split():
+                candidate=f'{line} {word}'.strip()
+                if line and button_font.measure(candidate)>width:
+                    lines.append(line);line=word
+                else:line=candidate
+            return '\n'.join(lines+[line])
+        for fx in range(5):
+            available=max(40,widths[fx+1]-14)
+            for button,text in ((self.app.buttons[fx],f'Load Fx{fx+1} DVH.txt'),
+                                (self.app.dicom_buttons[fx],f'Load Fx{fx+1} DCMs')):
+                button.configure(text=wrap(text,available))
+            self.app.structure_review_buttons[fx].configure(text=f'Review Fx{fx+1}\nROI matches')
+            if self.app.point_review_buttons:
+                self.app.point_review_buttons[fx].configure(text=wrap(f'Review Fx {fx+1} point matches',available))
+        for label in self.app.point_carry_labels+self.app.structure_carry_labels:
+            col=int(label.grid_info().get('column',1)) if label.winfo_manager() else 1
+            label.configure(wraplength=max(40,widths[col]-10))
         for label in self.app.prior_frame.winfo_children():
             if isinstance(label,tk.Label):
                 col=int(label.grid_info()['column'])
@@ -247,25 +292,21 @@ class App(tk.Tk):
         self.point_displayed={}
         self.displayed={}
         self.status_text=tk.StringVar(value='')
-        # Course setup occupies the top third; the constraint tables get the rest.
-        content=self.dashboard_split=tk.PanedWindow(self.dashboard,orient='vertical',bg=FRAME,
-            sashwidth=7,sashrelief='raised',showhandle=True,handlesize=8,borderwidth=0)
+        # Drag the divider to allocate space; setup itself stays stationary.
+        content=self.dashboard_split=tk.PanedWindow(self.dashboard,orient='vertical',
+            bg=FRAME,borderwidth=0,sashwidth=2,sashrelief='flat',showhandle=False,sashcursor='sb_v_double_arrow')
         setup=tk.Frame(content,bg=FRAME)
-        setup_canvas=self.setup_canvas=tk.Canvas(setup,bg=FRAME,highlightthickness=0)
-        setup_canvas.pack(fill='both',expand=True)
-        setup_scroll=ttk.Scrollbar(setup,orient='vertical',command=setup_canvas.yview)
-        setup_scroll.place(relx=1,rely=0,relheight=1,anchor='ne')
-        setup_canvas.configure(yscrollcommand=setup_scroll.set)
-        self.top=tk.Frame(setup_canvas,bg=FRAME)
-        setup_window=setup_canvas.create_window((0,0),window=self.top,anchor='nw')
-        setup_canvas.bind('<Configure>',lambda e:setup_canvas.itemconfigure(setup_window,width=e.width))
-        self.top.bind('<Configure>',lambda e:setup_canvas.configure(scrollregion=setup_canvas.bbox('all')))
+        setup.pack_propagate(False)
+        self.top=tk.Frame(setup,bg=FRAME)
+        self.top.pack(fill='x')
+        file_content=tk.Frame(setup,bg=FRAME)
+        file_content.pack(fill='both',expand=True)
 
         top=tk.Frame(self.top,bg=FRAME)
         top.pack(fill='x',padx=12,pady=(2,2))
         tk.Label(top,text=self.course.title+'  Course Dashboard',bg=FRAME,fg='white',font=(TITLE_FONT,14,'bold')).pack(side='left')
         tk.Label(top,text='UFHPTI',bg=FRAME,fg='#fa4a00',font=(FONT,12,'bold')).pack(side='right')
-        self.patient=tk.Label(top,bg=FRAME,fg='white',font=(FONT,10),anchor='e')
+        self.patient=tk.Label(top,bg=FRAME,fg='white',font=(FONT,TEXT_SIZE),anchor='e')
         self.patient.pack(side='right',padx=16)
         controls=tk.Frame(self.top,bg=BG,padx=6,pady=2)
         controls.pack(fill='x',padx=12,pady=2)
@@ -274,30 +315,30 @@ class App(tk.Tk):
         count.pack(side='left',padx=(4,6))
         count.bind('<<ComboboxSelected>>',self.change_count)
         self.rx_frame=controls
-        tk.Label(self.rx_frame,text='×',bg=BG,fg=MUTED,font=(FONT,10)).pack(side='left',padx=(0,6))
+        tk.Label(self.rx_frame,text='×',bg=BG,fg=MUTED,font=(FONT,TEXT_SIZE)).pack(side='left',padx=(0,6))
         self.prescription_var=tk.StringVar(value='7.0')
         prescription=tk.Entry(self.rx_frame,textvariable=self.prescription_var,bg=BLUE,fg=INPUT_INK,
                               justify='center',relief='flat',borderwidth=0,highlightthickness=1,
-                              highlightbackground=BLUE,highlightcolor='#327ca5',font=(FONT,10),width=6)
+                              highlightbackground=BLUE,highlightcolor='#327ca5',font=(FONT,TEXT_SIZE),width=6)
         prescription.pack(side='left')
         prescription.bind('<Return>',self.edit_pending)
         prescription.bind('<FocusOut>',self.edit_pending)
-        tk.Label(self.rx_frame,text='Gy/Fx',bg=BG,fg=INK,font=(FONT,10)).pack(side='left',padx=(6,12))
-        self.rx_summary=tk.Label(self.rx_frame,bg=BG,fg=INK,font=(FONT,10))
+        tk.Label(self.rx_frame,text='Gy/Fx',bg=BG,fg=INK,font=(FONT,TEXT_SIZE)).pack(side='left',padx=(6,12))
+        self.rx_summary=tk.Label(self.rx_frame,bg=BG,fg=INK,font=(FONT,TEXT_SIZE))
         self.rx_summary.pack(side='left')
-        cards=tk.Frame(self.top,bg='#d3d8dc')
+        cards=tk.Frame(file_content,bg='#d3d8dc')
         tk.Frame(cards,bg=FRAME).grid(row=0,column=6,columnspan=3,rowspan=8,sticky='nsew')
         self.fraction_grid=cards
         cards.pack(fill='x',padx=12,pady=0)
-        self.buttons=[];self.file_labels=[];self.dvh_date_labels=[];self.source_dates=[];self.rp_date_labels=[];self.dicom_buttons=[];self.ct_date_labels=[];self.point_review_buttons=[];self.point_carry_labels=[]
+        self.buttons=[];self.file_labels=[];self.dvh_date_labels=[];self.source_dates=[];self.rp_date_labels=[];self.dicom_buttons=[];self.ct_date_labels=[];self.point_review_buttons=[];self.point_carry_labels=[];self.structure_review_buttons=[];self.structure_carry_labels=[]
         self.fraction_titles=[]
-        self.modality_vars=[];self.modality_boxes=[]
+        self.modality_vars=[];self.modality_boxes=[];self.fx_date_vars=[];self.fx_date_entries=[];self.fx_date_displayed=[]
         # All fractions share one grid: wrapped names expand the same row
         # across every fraction, instead of shifting individual card contents.
         row_labels=('Fraction','DVH File ⓘ','DVH Name','DVH Date','Plan DICOM ⓘ','RP Name','RP Date','CT Date')
         for row,text in enumerate(row_labels):
             label=MetricTable.cell(cards,row,0,text,HEADER if row==0 else BG,row==0)
-            label.configure(font=(FONT,9,'bold') if row==0 else (FONT,10),anchor='e',justify='right',padx=10,pady=0)
+            label.configure(font=(FONT,TEXT_SIZE,'bold') if row==0 else (FONT,TEXT_SIZE),anchor='e',justify='right',padx=10,pady=0)
             if row==1:
                 self.bind_upload_help(label,'DVH File','Go to DVH. Select Absolute Dose and Absolute Volume. Dump to file. Upload DVH txt here.')
             elif row==4:
@@ -305,7 +346,7 @@ class App(tk.Tk):
         for fx in range(5):
             col=fx+1
             title=MetricTable.cell(cards,0,col,f'Fx {fx+1}',HEADER,True)
-            title.configure(font=(FONT,9,'bold'),pady=0)
+            title.configure(font=(FONT,TEXT_SIZE,'bold'),pady=0)
             self.fraction_titles.append(title)
             button=ttk.Button(cards,text=f'Load Fx{fx+1} DVH.txt',width=1,style='File.Load.TButton',command=lambda i=fx:self.load(i))
             button.grid(row=1,column=col,sticky='nsew',padx=(0,1),pady=(0,1))
@@ -324,31 +365,31 @@ class App(tk.Tk):
             ct=MetricTable.cell(cards,7,col,'—',SURFACE)
             self.ct_date_labels.append(ct)
             for label in (name,dvh_date,source,rp_date,ct):
-                label.configure(font=(FONT,10),anchor='center',justify='center',padx=5,pady=0)
+                label.configure(font=(FONT,TEXT_SIZE),anchor='center',justify='center',padx=5,pady=0)
                 label.bind('<Configure>',lambda e:e.widget.configure(wraplength=max(40,e.width-8)))
         attachments=tk.Frame(controls,bg=BG,padx=0,pady=0)
         attachments.pack(side='left',before=count)
         tk.Frame(controls,bg='#d3d8dc',width=1,height=22).pack(side='left',before=count,padx=12)
-        tk.Label(controls,text='BT Rx:',bg=BG,fg=INK,font=(FONT,10)).pack(side='left',before=count,padx=(0,4))
-        tk.Label(attachments,text='PDF fraction',bg=BG,fg=INK).pack(side='left')
+        tk.Label(controls,text='BT Rx:',bg=BG,fg=INK,font=(FONT,TEXT_SIZE)).pack(side='left',before=count,padx=(0,4))
+        tk.Label(attachments,text='PDF fraction',bg=BG,fg='#003f5c',font=(FONT,TEXT_SIZE,'bold')).pack(side='left')
         self.image_fx=tk.StringVar(value='Fx 1')
-        self.image_fx_box=ttk.Combobox(attachments,textvariable=self.image_fx,state='readonly',width=5)
+        self.image_fx_box=ttk.Combobox(attachments,textvariable=self.image_fx,state='readonly',width=5,style='Report.TCombobox',font=(FONT,TEXT_SIZE,'bold'),justify='center')
         self.image_fx_box.pack(side='left',padx=5)
-        ttk.Button(attachments,text='Snip Screen',command=lambda:self.add_screenshot(True)).pack(side='left',padx=3)
+        ttk.Button(attachments,text='Snip Screen',style='Primary.TButton',command=lambda:self.add_screenshot(True)).pack(side='left',padx=3)
         image_menu=ttk.Menubutton(attachments,text='Screenshots')
         menu=tk.Menu(image_menu,tearoff=False)
         menu.add_command(label='Add file…',command=lambda:self.add_screenshot(False))
         menu.add_command(label='Snip screen…',command=lambda:self.add_screenshot(True))
         menu.add_separator();menu.add_command(label='Manage images…',command=self.remove_screenshot)
         image_menu.configure(menu=menu);image_menu.pack(side='left',padx=3)
-        self.image_status=tk.Label(attachments,text='',bg=BG,fg=MUTED,font=(FONT,8))
+        self.image_status=tk.Label(attachments,text='',bg=BG,fg=MUTED,font=(FONT,TEXT_SIZE))
         self.image_status.pack(side='left',padx=6)
         self.show_files=tk.BooleanVar(value=True)
-        bt_heading=tk.Label(self.top,text='BRACHYTHERAPY',bg=FRAME,fg='white',font=(FONT,10,'bold'),anchor='w')
+        bt_heading=tk.Label(self.top,text='BRACHYTHERAPY',bg=FRAME,fg='white',font=(FONT,TEXT_SIZE,'bold'),anchor='w')
         bt_heading.pack(fill='x',padx=14,pady=(4,1),before=controls)
         self.prior_frame=tk.Frame(self.top,bg='#d3d8dc')
         self.prior_frame.pack(fill='x',padx=12,pady=(0,2),before=bt_heading)
-        ebrt_heading=tk.Label(self.top,text='EXTERNAL BEAM THERAPY',bg=FRAME,fg='white',font=(FONT,10,'bold'),anchor='w')
+        ebrt_heading=tk.Label(self.top,text='EXTERNAL BEAM THERAPY',bg=FRAME,fg='white',font=(FONT,TEXT_SIZE,'bold'),anchor='w')
         ebrt_heading.pack(fill='x',padx=14,pady=(1,1),before=self.prior_frame)
         for col,(title,weight) in enumerate((('Parameter',4),('Value',1),('Tumour EQD2₁₀ [Gy]',2),('OAR EQD2₃ [Gy]',2))):
             MetricTable.cell(self.prior_frame,0,col,title,HEADER,True)
@@ -357,7 +398,7 @@ class App(tk.Tk):
         self.prior_display={}
         for row,(text,var) in enumerate(zip(('Dose per fraction [Gy]','Fractions without central shield'),self.prior_vars),1):
             MetricTable.cell(self.prior_frame,row,0,text,'white').configure(padx=12)
-            entry=tk.Entry(self.prior_frame,textvariable=var,bg=BLUE,fg=INPUT_INK,justify='center',relief='flat',borderwidth=0,highlightthickness=0,font=(FONT,10),width=6)
+            entry=tk.Entry(self.prior_frame,textvariable=var,bg=BLUE,fg=INPUT_INK,justify='center',relief='flat',borderwidth=0,highlightthickness=0,font=(FONT,TEXT_SIZE),width=6)
             entry.grid(row=row,column=1,sticky='nsew',padx=(0,1),pady=(0,1))
             entry.bind('<Return>',self.edit_pending);entry.bind('<FocusOut>',self.edit_pending)
             for col in (2,3):MetricTable.cell(self.prior_frame,row,col,'','white')
@@ -370,34 +411,61 @@ class App(tk.Tk):
                 MetricTable.cell(self.prior_frame,row,col,'','white')
         for widget in self.prior_frame.winfo_children():
             current=str(widget.cget('font'))
-            widget.configure(font=(FONT,10,'bold' if 'bold' in current else 'normal'))
+            widget.configure(font=(FONT,TEXT_SIZE,'bold' if 'bold' in current else 'normal'))
         if self.course.mode=='Cylinder':
             self.prior_frame.pack_forget();ebrt_heading.pack_forget()
         worksheet=tk.Frame(content,bg=FRAME)
-        body=MetricTable(worksheet,self,'DOSE / EQD2',self.course.structures,None)
+        resize_grip=self.resize_grip=tk.Canvas(worksheet,height=7,highlightthickness=0,
+            bg=FRAME,cursor='sb_v_double_arrow')
+        resize_grip.pack(fill='x')
+        def draw_resize_grip(event):
+            resize_grip.delete('all')
+            center=event.width/2
+            resize_grip.create_line(center-12,3,center+12,3,fill='#8a969f',width=2)
+        resize_grip.bind('<Configure>',draw_resize_grip)
+        body=MetricTable(worksheet,self,'PORTEC-4 EQD2' if self.course.mode=='Cylinder' else 'EMBRACE-2 DOSE/EQD2',self.course.structures,None)
         self.tables=[body]
         footer=self.footer=tk.Frame(self.dashboard,bg=BG)
         # Reserve the footer before allocating space to setup and worksheet.
         # Child requested sizes must never push export actions off screen.
         footer.pack(side='bottom',fill='x',padx=12,pady=(2,6))
         content.pack(side='top',fill='both',expand=True)
-        content.add(setup,minsize=100,stretch='never')
+        content.add(setup,minsize=120,stretch='never')
         content.add(worksheet,minsize=130,stretch='always')
         body.pack(fill='both',expand=True,padx=12,pady=(0,3))
         self.chooser.lift()
-        divider_initialized=False
+        divider_adjusted=False
+        drag_offset=0
+        def start_resize(event):
+            nonlocal divider_adjusted,drag_offset
+            divider_adjusted=True
+            drag_offset=event.y_root-content.winfo_rooty()-content.sash_coord(0)[1]
+        def drag_resize(event):
+            y=event.y_root-content.winfo_rooty()-drag_offset
+            content.sash_place(0,0,max(120,min(y,content.winfo_height()-137)))
+        def sash_pressed(event):
+            nonlocal divider_adjusted
+            if content.identify(event.x,event.y):divider_adjusted=True
+        resize_grip.bind('<ButtonPress-1>',start_resize)
+        resize_grip.bind('<B1-Motion>',drag_resize)
+        resize_grip.bind('<Enter>',lambda e:resize_grip.configure(bg='#35434c'))
+        resize_grip.bind('<Leave>',lambda e:resize_grip.configure(bg=FRAME))
+        content.bind('<ButtonPress-1>',sash_pressed,add='+')
         def position_divider(event=None):
-            nonlocal divider_initialized
-            if divider_initialized or not content.winfo_exists() or content.winfo_height()<237:
-                return
-            content.sash_place(0,0,min(self.top.winfo_reqheight()+2,content.winfo_height()-137))
-            divider_initialized=True
+            if divider_adjusted or not content.winfo_exists() or content.winfo_height()<260:return
+            # Expand through CT Date by default, while retaining worksheet access
+            # on small displays. Once dragged, preserve the user's allocation.
+            height=max(120,min(self.top.winfo_reqheight()+file_content.winfo_reqheight()+2,
+                               content.winfo_height()-137))
+            if abs(content.sash_coord(0)[1]-height)>1:content.sash_place(0,0,height)
         content.bind('<Configure>',position_divider)
+        self.top.bind('<Configure>',position_divider,add='+')
+        file_content.bind('<Configure>',position_divider,add='+')
         self.after_idle(position_divider)
         ttk.Button(footer,text='Export Excel',command=self.export,width=14).pack(side='right',padx=(10,8),pady=5)
         ttk.Button(footer,text='Export PDF',command=self.export_report,width=14).pack(side='right',padx=(10,0),pady=5)
         ttk.Button(footer,text='Clear all',command=self.clear,width=10).pack(side='right',padx=(10,0),pady=5)
-        status_label=tk.Label(footer,textvariable=self.status_text,bg=BG,fg='#505b67',font=(FONT,10),anchor='w',justify='left',wraplength=300,height=2)
+        status_label=tk.Label(footer,textvariable=self.status_text,bg=BG,fg='#505b67',font=(FONT,TEXT_SIZE),anchor='w',justify='left',wraplength=300,height=2)
         # Fixed two-line height: status changes never resize the tables above.
         status_label.pack(side='left',fill='x',expand=True,padx=8,pady=5)
         status_label.bind('<Configure>',lambda e:e.widget.configure(wraplength=max(120,e.width-4)))
@@ -421,7 +489,7 @@ class App(tk.Tk):
             if tooltip is not None:return
             tooltip=tk.Toplevel(self)
             tooltip.overrideredirect(True)
-            tk.Label(tooltip,text=instructions,bg=SURFACE,fg=INK,font=(FONT,10),
+            tk.Label(tooltip,text=instructions,bg=SURFACE,fg=INK,font=(FONT,TEXT_SIZE),
                      justify='left',wraplength=320,padx=10,pady=8,
                      relief='solid',borderwidth=1).pack()
             tooltip.update_idletasks()
@@ -450,6 +518,10 @@ class App(tk.Tk):
 
     def refresh(self):
         c=self.course
+        self.fx_date_displayed=list(c.fx_dates)
+        for fx,var in enumerate(self.fx_date_vars):
+            var.set(c.fx_dates[fx] if fx<c.count else '')
+            self.fx_date_entries[fx].configure(state='normal' if fx<c.count else 'disabled')
         for fx,box in enumerate(self.modality_boxes):
             self.modality_vars[fx].set(c.modalities[fx] if fx<c.count else '')
             box.configure(state='readonly' if fx<c.count else 'disabled')
@@ -469,6 +541,16 @@ class App(tk.Tk):
             rp_text=c.rp_names[fx] or '—'
             self.source_dates[fx].configure(text=rp_text if fx<c.count else '—',bg=SURFACE if fx<c.count else INACTIVE,fg=INK if fx<c.count else MUTED)
             self.rp_date_labels[fx].configure(text=(c.rp_dates[fx] or '—') if fx<c.count else '—',bg=SURFACE if fx<c.count else INACTIVE,fg=INK if fx<c.count else MUTED)
+        for fx,button in enumerate(self.structure_review_buttons):
+            carried=fx<c.count and c.dvhs[fx] is None and ' (carried from Fx' in c.files[fx]
+            label=self.structure_carry_labels[fx]
+            if carried:
+                button.grid_remove()
+                label.configure(text=c.files[fx].rsplit(' (',1)[-1].rstrip(')').replace('carried','Carried',1))
+                label.grid()
+            else:
+                label.grid_remove();button.grid()
+            button.configure(state='normal' if fx<c.count and c.dvhs[fx] is not None else 'disabled')
         for fx,button in enumerate(self.point_review_buttons):
             source=c.point_sources[fx]
             carried=fx<c.count and source is not None and source!=fx and not c.point_explicit[fx]
@@ -540,6 +622,9 @@ class App(tk.Tk):
         self._committing=True
         try:
             updated=deepcopy(self.course)
+            for fx,var in enumerate(self.fx_date_vars):
+                if fx<updated.count and var.get()!=self.fx_date_displayed[fx]:
+                    updated.set_fx_date(fx,var.get())
             if self.prescription_var.get()!=self.prescription_displayed:
                 updated.set_prescription(self.prescription_var.get())
             for (key,fx),(var,_) in self.inputs.items():
@@ -636,6 +721,57 @@ class App(tk.Tk):
             if points and candidate.mode=='GYN' and any(not p['target'] for p in points):self.review_loaded_points(fx)
         except Exception as error:messagebox.showerror('DICOM import',str(error),parent=self)
 
+    def review_structure_matches(self, fx):
+        if not self.commit_inputs():return
+        if fx>=self.course.count or self.course.dvhs[fx] is None:return
+        parsed=self.course.dvhs[fx]
+        dialog=tk.Toplevel(self);dialog.title(f'Fx {fx+1}: review structure matches')
+        dialog.transient(self);dialog.grab_set()
+        tk.Label(dialog,text='Review exported structures and their worksheet matches. Each destination can be used once.',
+                 wraplength=650,justify='left').pack(fill='x',padx=12,pady=10)
+        area=tk.Frame(dialog);area.pack(fill='both',expand=True,padx=12)
+        canvas=tk.Canvas(area,highlightthickness=0,width=640,height=360)
+        scroll=ttk.Scrollbar(area,orient='vertical',command=canvas.yview)
+        canvas.configure(yscrollcommand=scroll.set)
+        scroll.pack(side='right',fill='y');canvas.pack(side='left',fill='both',expand=True)
+        rows=tk.Frame(canvas);window=canvas.create_window((0,0),window=rows,anchor='nw')
+        rows.bind('<Configure>',lambda e:canvas.configure(scrollregion=canvas.bbox('all')))
+        canvas.bind('<Configure>',lambda e:canvas.itemconfigure(window,width=e.width))
+        rows.columnconfigure(0,weight=1);rows.columnconfigure(1,weight=1)
+        for col,title in enumerate(('Exported structure','Worksheet structure')):
+            tk.Label(rows,text=title,font=(FONT,TEXT_SIZE,'bold')).grid(row=0,column=col,padx=8,pady=4)
+        choices={'Unassigned':None,**{title:key for title,key,_ in self.course.structures}}
+        inverse={key:title for title,key in choices.items()}
+        selections=[];boxes=[]
+        for row,(name,target) in enumerate(parsed.structure_matches.items(),1):
+            label=tk.Label(rows,text=name,anchor='w',justify='left',wraplength=290)
+            label.grid(row=row,column=0,sticky='ew',padx=8,pady=3)
+            var=tk.StringVar(value=inverse.get(target,'Unassigned'))
+            box=ttk.Combobox(rows,textvariable=var,state='readonly',width=26,justify='right')
+            box.grid(row=row,column=1,sticky='ew',padx=8,pady=3)
+            selections.append((name,var));boxes.append(box)
+        def update_choices(*_):
+            selected=[var.get() for _,var in selections]
+            for i,box in enumerate(boxes):
+                taken={v for j,v in enumerate(selected) if i!=j and v!='Unassigned'}
+                box.configure(values=[label for label in choices if label not in taken])
+        for _,var in selections:var.trace_add('write',update_choices)
+        update_choices()
+        def apply():
+            try:
+                matches={name:choices[var.get()] for name,var in selections}
+                candidate=deepcopy(self.course)
+                result=import_with_volumes(dialog,lambda volumes:candidate.rematch_structures(fx,matches,volumes))
+                if result is None:return
+                self.course=candidate;self.refresh()
+                self.status_text.set(f'Fx {fx+1}: structure matches updated.')
+                dialog.destroy()
+            except (ValueError,OSError) as error:
+                messagebox.showerror('Structure matches',str(error),parent=dialog)
+        buttons=tk.Frame(dialog);buttons.pack(fill='x',padx=12,pady=10)
+        ttk.Button(buttons,text='Close',command=dialog.destroy).pack(side='left')
+        ttk.Button(buttons,text='Apply matches',command=apply).pack(side='right')
+
     def review_loaded_points(self,fx):
         if not self.commit_inputs():return
         if fx>=self.course.count or not self.course.point_records[fx]:return
@@ -646,7 +782,7 @@ class App(tk.Tk):
         inverse={value:key for key,value in choices.items()};selections=[];match_boxes=[]
         records=deepcopy(self.course.point_records[fx])
         for col,title in enumerate(('Point Set Name','Point Name','Dose [Gy]','Worksheet point')):
-            tk.Label(dialog,text=title,font=(FONT,10,'bold')).grid(row=1,column=col,padx=8)
+            tk.Label(dialog,text=title,font=(FONT,TEXT_SIZE,'bold')).grid(row=1,column=col,padx=8)
         for row,point in enumerate(records,2):
             for col,value in enumerate((point['group'],point['name'],fmt(point['dose']))):
                 tk.Label(dialog,text=value).grid(row=row,column=col,padx=8,pady=3)
@@ -721,6 +857,8 @@ class App(tk.Tk):
         def accept(data):
             self.course.screenshots[fx]=self.course.screenshot_images(fx)+[data]
             self.refresh()
+            if self.notebook.select()==str(self.preview):
+                self.preview.refresh_document()
         (capture_monitor if capture else choose_image)(self,accept)
 
     def remove_screenshot(self):

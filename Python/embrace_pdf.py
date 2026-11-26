@@ -102,8 +102,9 @@ def export_pdf(course, output, fraction=0, worksheet_only=False):
         commands=[]
         # Fractions retain their source plan names within the worksheet header.
         rows.append(['Localization (MR / CT)']+[p(course.modalities[i] or 'Not set',small) for i in range(n)]+['']*4)
+        rows.append(['Fx date']+[p(course.fx_dates[i] or '—',small) for i in range(n)]+['']*4)
         rows.append(['Plan / source']+[p(course.files[i] or course.plans[i] or 'Manual',small) for i in range(n)]+['']*4)
-        rows.append(['Date']+[p(course.dvhs[i].source_date or 'Unavailable',small) if course.dvhs[i] else p('Not imported',small) for i in range(n)]+['']*4)
+        rows.append(['DVH Date']+[p(course.dvhs[i].source_date or 'Unavailable',small) if course.dvhs[i] else p('Not imported',small) for i in range(n)]+['']*4)
         rows.append(['CT date (manual)']+[p(course.ct_dates[i] or 'Not entered',small) for i in range(n)]+['']*4)
         def point_rows(keys):
             for key,label,_,ab in POINTS:

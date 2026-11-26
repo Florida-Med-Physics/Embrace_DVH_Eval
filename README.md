@@ -1,5 +1,11 @@
 # EMBRACE-2 EQD2 Dashboard
 
+[![Download Mac](https://img.shields.io/badge/Download-Mac_Apple_Silicon-005b83?style=for-the-badge)](https://github.com/Florida-Med-Physics/Embrace_DVH_Eval/releases/latest/download/EMBRACE-EQD2-macOS-arm64.zip)
+[![Download Windows](https://img.shields.io/badge/Download-Windows_64--bit-005b83?style=for-the-badge)](https://github.com/Florida-Med-Physics/Embrace_DVH_Eval/releases/latest/download/EMBRACE-EQD2-Windows-x64.zip)
+[![Build executables](https://img.shields.io/badge/GitHub_Actions-Build_executables-354d60?style=for-the-badge)](https://github.com/Florida-Med-Physics/Embrace_DVH_Eval/actions/workflows/build-apps.yml)
+
+Download and unzip the build for your computer, then open the app. No Python installation is needed.
+
 > **Not validated for clinical use.** This software has not been validated or commissioned for clinical use. Every calculation, export, and report it produces — including the EMBRACE-2 and Cylinder (PORTEC-4) modes, α/β values, and dose constraints — must be reviewed by a qualified medical physicist before it informs any clinical decision.
 
 A Python desktop port of `EMBRACE2_EQD2_Excel_Autogenerator (19).m` supplied September 16, 2026. The Python interface follows the MATLAB dashboard: patient and plan details, prior RT, targets, organs at risk, editable physical doses and read-only volumes, calculated EQD2 rows, colored totals, and Excel export.
@@ -55,7 +61,9 @@ Packaged builds include Python, Tkinter, and the Excel template. End users do no
 
 The Mac build targets Apple Silicon (M-series), not Intel Macs. These builds have no publisher certificate or Apple notarization; another computer may display an operating-system security prompt. Organization-managed computers may require IT approval.
 
-GitHub Actions builds both platforms and retains downloadable ZIP artifacts for 30 days. Find the latest successful **Build desktop applications** run under the repository's **Actions** tab. Patient files are not included or sent to the build service.
+The download buttons above point to the latest published release. Release downloads remain available without the 30-day Actions artifact limit.
+
+To build both executables on GitHub, click **Build executables** above, then **Run workflow**, select `main`, leave `release_tag` blank, and click **Run workflow** again (repository write access required). After both jobs succeed, open the run and download the Mac or Windows ZIP under **Artifacts**. These build artifacts are retained for 30 days. The optional `release_tag` is for maintainers publishing to an existing draft release. Patient files are not included or sent to the build service.
 
 To rebuild locally, create a virtual environment on the target operating system, install `packaging/requirements.txt`, and run `python packaging/build.py`. The script builds the app, launches the packaged executable for GUI/calculation/template-export checks, then creates the ZIP in `dist`. Windows executables must be built on Windows. The build smoke-test report is stored in `build/packaged-smoke-test.json`.
 
