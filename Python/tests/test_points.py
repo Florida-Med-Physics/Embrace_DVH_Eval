@@ -10,6 +10,40 @@ from embrace_dicom import read_point_doses
 from embrace_core import Course
 
 class PointTests(unittest.TestCase):
+    def test_point_carry_matches_fraction_import_pattern(self):
+        c=Course()
+        def points(dose,target='point_a_left'):
+            return [{'target':target,'dose':dose,'name':'AL','group':'A Points'}]
+        c.set_points(0,points(4.924310),'2026-08-31')
+        self.assertEqual([d['point_a_left'] for d in c.point_doses[:4]],[4.924310]*4)
+        self.assertEqual(c.point_sources[:4],[0]*4)
+        c.point_records[1][0]['name']='changed'
+        self.assertEqual(c.point_records[0][0]['name'],'AL')
+        c.set_points(2,points(6.1),'2026-09-02')
+        c.set_points(0,points(5.2),'2026-09-01')
+        self.assertEqual([d['point_a_left'] for d in c.point_doses[:4]],[5.2,5.2,6.1,5.2])
+        c.set_count(5)
+        self.assertEqual(c.point_doses[4]['point_a_left'],6.1)
+        c.set_points(2,points(6.1,'point_a_right'),'2026-09-02')
+        self.assertEqual(c.point_doses[4],{'point_a_right':6.1})
+        c.clear_points(0)
+        self.assertEqual(c.point_doses[1],{})
+        self.assertEqual(c.point_doses[2],{'point_a_right':6.1})
+        c.set_count(3)
+        self.assertEqual(c.point_doses[3:], [{},{}])
+        self.assertEqual(c.point_sources[3:], [None,None])
+
+    def test_manual_points_are_preserved_on_later_import(self):
+        c=Course()
+        c.set_points(0,[{'target':'point_a_left','dose':4.0}],'2026-08-31')
+        from copy import deepcopy
+        doses=deepcopy(c.point_doses)
+        doses[1]['point_a_left']=7.0
+        c.set_report_details(c.ct_dates,doses)
+        c.set_points(0,[{'target':'point_a_left','dose':5.0}],'2026-08-31')
+        self.assertEqual(c.point_doses[1]['point_a_left'],7.0)
+        self.assertEqual(c.point_doses[2]['point_a_left'],5.0)
+
     def test_aliases_and_ambiguity(self):
         for name in ('PointA_L','AL','A_L','A_Left','Point A left Fx1','Point A Lef'):
             self.assertEqual(suggest_point(name),'point_a_left')
@@ -72,6 +106,21 @@ class PointTests(unittest.TestCase):
         c.point_records[3]=[{'name':'AL'}];c.set_count(3)
         self.assertEqual(c.point_records[3],[])
         with self.assertRaises(ValueError):c.set_report_details(['']*3,[{'bladder_point':'nan'}]+[{}]*2)
+
+    def test_unrelated_files_are_ignored(self):
+        from embrace_dicom import read_fraction_dicoms
+        with tempfile.TemporaryDirectory() as folder:
+            root=Path(folder)
+            (root/'notes.txt').write_text('Not a DICOM export')
+            unrelated=self.write(root/'rs.dcm','RTSTRUCT','1.2.3.99')
+            unrelated.PatientID='OTHER'
+            unrelated.save_as(root/'rs.dcm',enforce_file_format=True)
+            ignored=[root/'notes.txt',root/'rs.dcm']
+            self.assertIsNone(read_fraction_dicoms(ignored,'QA'))
+            self.fixture(root)
+            expected=read_fraction_dicoms([root/'rp.dcm',root/'rd.dcm'],'QA')
+            actual=read_fraction_dicoms(ignored+[root/'rp.dcm',root/'rd.dcm'],'QA')
+            self.assertEqual(actual,expected)
 
     def test_fraction_bundle_ct_and_automatic_points(self):
         from embrace_dicom import read_fraction_dicoms

@@ -86,22 +86,25 @@ def read_point_doses(rd_path, patient_id, rp_path=None):
 
 
 def read_fraction_dicoms(paths, patient_id):
-    """Validate one fraction's files before returning any changes to the course."""
+    """Validate supported files; ignore unrelated files and return None for no import."""
     import pydicom
     from collections import Counter
     files={'RTPLAN':[], 'RTDOSE':[], 'CT':[]}
     patient_id=patient_id.strip()
     for path in dict.fromkeys(map(str,paths)):
-        ds=pydicom.dcmread(path,stop_before_pixels=True)
+        try:
+            ds=pydicom.dcmread(path,stop_before_pixels=True)
+        except pydicom.errors.InvalidDicomError:
+            continue
         modality=str(getattr(ds,'Modality',''))
-        if modality not in files:raise ValueError('Select RP, RD, or CT DICOM files only.')
+        if modality not in files:continue
         source_id=str(getattr(ds,'PatientID','')).strip()
         if not source_id:raise ValueError('A selected DICOM has no patient ID.')
         patient_id=patient_id or source_id
         if source_id.casefold()!=patient_id.casefold():
             raise ValueError('All selected DICOM files must match the current patient.')
         files[modality].append((path,ds))
-    if not any(files.values()):raise ValueError('Select RP, RD, or CT files.')
+    if not any(files.values()):return None
     if len(files['RTPLAN'])>1 or len(files['RTDOSE'])>1:
         raise ValueError('Select one RP and one RD for this fraction, plus any CT slices.')
     frames={str(ds.FrameOfReferenceUID) for items in files.values() for _,ds in items if getattr(ds,'FrameOfReferenceUID',None)}

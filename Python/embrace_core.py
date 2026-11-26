@@ -2,6 +2,7 @@
 
 No GUI or third-party dependencies. Fractions use zero-based indexes internally.
 """
+from copy import deepcopy
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 import math
@@ -282,7 +283,29 @@ class Course:
     point_doses: list = field(default_factory=lambda: [{} for _ in range(5)])
     point_records: list = field(default_factory=lambda: [[] for _ in range(5)])
     point_source_dates: list = field(default_factory=lambda: ['']*5)
+    point_explicit: list = field(default_factory=lambda: [False]*5)
+    point_sources: list = field(default_factory=lambda: [None]*5)
     relative_doses: list = field(default_factory=lambda: [{} for _ in range(5)])
+
+    def set_points(self, fx, records, source_date):
+        """Import/review points and carry into later fractions without their own points."""
+        if not 0 <= fx < self.count:raise ValueError('Inactive fraction.')
+        self.point_explicit[fx]=True
+        for dest in range(fx,self.count):
+            if dest==fx or not self.point_explicit[dest]:
+                self.point_records[dest]=deepcopy(records)
+                self.point_doses[dest]={p['target']:p['dose'] for p in records if p['target']}
+                self.point_source_dates[dest]=source_date
+                self.point_sources[dest]=fx
+
+    def clear_points(self, fx):
+        for dest in range(5):
+            if dest==fx or (self.point_sources[dest]==fx and not self.point_explicit[dest]):
+                self.point_doses[dest]={}
+                self.point_records[dest]=[]
+                self.point_source_dates[dest]=''
+                self.point_sources[dest]=None
+                self.point_explicit[dest]=False
 
     def screenshot_images(self, fx):
         """Return all attached images, including legacy single-image values."""
@@ -307,6 +330,10 @@ class Course:
                 points[key]=value
             clean_doses.append(points)
         self.ct_dates[:self.count]=clean_dates
+        for fx,points in enumerate(clean_doses):
+            if any(value!=self.point_doses[fx].get(key) for key,value in points.items()):
+                self.point_explicit[fx]=True
+                self.point_sources[fx]=fx
         self.point_doses[:self.count]=clean_doses
 
     @classmethod
@@ -390,11 +417,21 @@ class Course:
                 self.point_doses[fx] = {}
                 self.point_records[fx] = []
                 self.point_source_dates[fx] = ''
+                self.point_explicit[fx] = False
+                self.point_sources[fx] = None
         elif count > old:
             sources = [i for i in range(old) if self.explicit[i]]
             if sources:
                 for fx in range(old, count):
                     self.copy(sources[-1], fx)
+            point_sources=[i for i in range(old) if self.point_explicit[i]]
+            if point_sources:
+                src=point_sources[-1]
+                for dest in range(old,count):
+                    self.point_doses[dest]=deepcopy(self.point_doses[src])
+                    self.point_records[dest]=deepcopy(self.point_records[src])
+                    self.point_source_dates[dest]=self.point_source_dates[src]
+                    self.point_sources[dest]=src
         self.count = count
 
     def load(self, fx, path, volumes_cc=None):
@@ -414,9 +451,7 @@ class Course:
         if replacing_dvh:
             self.ct_dates[fx] = ''
             self.rp_names[fx] = self.rp_dates[fx] = ''
-            self.point_doses[fx] = {}
-            self.point_records[fx] = []
-            self.point_source_dates[fx] = ''
+            self.clear_points(fx)
         for dest in range(fx, self.count):
             if dest == fx or not self.explicit[dest]:
                 # MATLAB preserves existing metrics absent from the new file.

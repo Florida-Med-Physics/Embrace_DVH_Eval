@@ -21,7 +21,7 @@ class MetricTable(tk.Frame):
     def __init__(self, parent, app, title, definitions, target):
         super().__init__(parent,bg=FRAME)
         self.app = app
-        tk.Label(self,text=title,bg=FRAME,fg='white',font=(FONT,12,'bold'),anchor='nw',pady=0,borderwidth=0).pack(fill='x',pady=0)
+        tk.Label(self,text=title,bg=FRAME,fg='white',font=(FONT,10,'bold'),anchor='nw',pady=0,borderwidth=0).pack(fill='x',pady=0)
         self.header = tk.Frame(self,bg=HEADER)
         self.header.pack(fill='x')
         outer = tk.Frame(self,bg='white')
@@ -52,7 +52,7 @@ class MetricTable(tk.Frame):
             label=self.cell(self.head_grid,0,col,text,HEADER,bold=True)
             label.configure(height=0,font=(FONT,9,'bold'))
             self.headings.append(label)
-        self.cell(self.grid_frame,0,0,'MR / CT',BG)
+        self.cell(self.grid_frame,0,0,'MR / CT',BG).configure(anchor='center',justify='center')
         for fx in range(5):
             var=tk.StringVar()
             box=ttk.Combobox(self.grid_frame,textvariable=var,values=['','MRI','CT','MRI + CT'],state='readonly',width=1)
@@ -69,6 +69,11 @@ class MetricTable(tk.Frame):
                 review=ttk.Button(self.grid_frame,text=f'Review Fx {fx+1}\npoint matches',width=1,style='Compact.Load.TButton',command=lambda i=fx:app.review_loaded_points(i))
                 review.grid(row=row,column=fx+1,sticky='nsew',padx=1,pady=(8,2))
                 app.point_review_buttons.append(review)
+                carried=self.cell(self.grid_frame,row,fx+1,'',bg)
+                carried.configure(font=(FONT,9),justify='center')
+                carried.grid_configure(pady=(8,2))
+                carried.grid_remove()
+                app.point_carry_labels.append(carried)
             for col in (6,7,8):
                 self.cell(self.grid_frame,row,col,'',bg).grid_configure(pady=(8,2))
             row+=1
@@ -78,7 +83,7 @@ class MetricTable(tk.Frame):
             for key,label,_,ab in POINTS:
                 if key not in keys:continue
                 point_label=self.cell(self.grid_frame,row,0,label+' [Gy]','white')
-                point_label.configure(padx=20,height=1);point_label.compact_point_row=True
+                point_label.configure(padx=36,height=1);point_label.compact_point_row=True
                 for fx in range(5):
                     var=tk.StringVar()
                     entry=tk.Entry(self.grid_frame,textvariable=var,bg=BLUE,fg=INK,disabledbackground=INACTIVE,
@@ -89,7 +94,7 @@ class MetricTable(tk.Frame):
                 for col in (6,7,8):self.cell(self.grid_frame,row,col,'','white')
                 row+=1
                 point_label=self.cell(self.grid_frame,row,0,f'EQD2{ab} [Gy]','#fafbfc')
-                point_label.configure(padx=20,height=1);point_label.compact_point_row=True
+                point_label.configure(padx=36,height=1);point_label.compact_point_row=True
                 for fx in range(5):app.point_cells[key,fx]=self.cell(self.grid_frame,row,fx+1,'','#fafbfc')
                 app.point_totals[key]=self.cell(self.grid_frame,row,6,'','white',bold=True)
                 for col in (7,8):self.cell(self.grid_frame,row,col,'','#fafbfc')
@@ -145,6 +150,7 @@ class MetricTable(tk.Frame):
     def cell(parent,row,col,text,bg,bold=False):
         label=tk.Label(parent,text=text,bg=bg,fg=INK,anchor='w' if col == 0 else 'center',
                        font=(FONT,10,'bold' if bold else 'normal'),padx=5,pady=0,width=1)
+        parent.rowconfigure(row,minsize=getattr(parent.winfo_toplevel(),'table_row_height',0))
         label.grid(row=row,column=col,sticky='nsew',padx=(0,1),pady=(0,1))
         return label
 
@@ -155,16 +161,20 @@ class MetricTable(tk.Frame):
         if self.cylinder: proportions=[185,118,118,118,118,118,115,0,0]
         widths=[int(event.width*w/sum(proportions)) for w in proportions]
         widths[0]+=event.width-sum(widths)
-        for grid in (self.head_grid,self.grid_frame,self.app.fraction_grid):
+        for grid in (self.head_grid,self.grid_frame,self.app.fraction_grid,self.app.prior_frame):
             for col,width in enumerate(widths):
                 grid.columnconfigure(col,minsize=width,weight=0)
+        for label in self.app.prior_frame.winfo_children():
+            if isinstance(label,tk.Label):
+                col=int(label.grid_info()['column'])
+                label.configure(wraplength=max(40,widths[col]-2*int(label.cget('padx'))-4),justify='left' if col==0 else 'center')
         for label in self.grid_frame.grid_slaves(column=0):
             if isinstance(label,tk.Label) and int(label.grid_info().get('columnspan',1))==1:
                 if getattr(label,'compact_point_row',False):
                     label.configure(wraplength=0,height=1)
                 else:
                     label.configure(wraplength=max(80,widths[0]-2*int(label.cget('padx'))-4),height=0)
-        self.headings[0].configure(text='Structure / dose\nparameter')
+        self.headings[0].configure(text='Structure / dose\nparameter',anchor='center',justify='center')
         for col,label in enumerate(self.headings):
             label.configure(wraplength=max(40,widths[col]-12),height=0)
 
@@ -196,6 +206,9 @@ class App(tk.Tk):
         self.maxsize(1400,self.winfo_screenheight())
         self.configure(bg=BG)
         apply_theme(self)
+        row_probe=ttk.Combobox(self,width=1,state='readonly')
+        self.table_row_height=row_probe.winfo_reqheight()+1
+        row_probe.destroy()
         self.mode_courses={'GYN':self.course}
         self.mode_comparisons={}
         # Sits in the tab strip's empty right side so it costs no vertical space.
@@ -235,7 +248,19 @@ class App(tk.Tk):
         self.displayed={}
         self.status_text=tk.StringVar(value='')
         # Course setup occupies the top third; the constraint tables get the rest.
-        self.top=tk.Frame(self.dashboard,bg=FRAME)
+        content=self.dashboard_split=tk.PanedWindow(self.dashboard,orient='vertical',bg=FRAME,
+            sashwidth=7,sashrelief='raised',showhandle=True,handlesize=8,borderwidth=0)
+        setup=tk.Frame(content,bg=FRAME)
+        setup_canvas=self.setup_canvas=tk.Canvas(setup,bg=FRAME,highlightthickness=0)
+        setup_canvas.pack(fill='both',expand=True)
+        setup_scroll=ttk.Scrollbar(setup,orient='vertical',command=setup_canvas.yview)
+        setup_scroll.place(relx=1,rely=0,relheight=1,anchor='ne')
+        setup_canvas.configure(yscrollcommand=setup_scroll.set)
+        self.top=tk.Frame(setup_canvas,bg=FRAME)
+        setup_window=setup_canvas.create_window((0,0),window=self.top,anchor='nw')
+        setup_canvas.bind('<Configure>',lambda e:setup_canvas.itemconfigure(setup_window,width=e.width))
+        self.top.bind('<Configure>',lambda e:setup_canvas.configure(scrollregion=setup_canvas.bbox('all')))
+
         top=tk.Frame(self.top,bg=FRAME)
         top.pack(fill='x',padx=12,pady=(2,2))
         tk.Label(top,text=self.course.title+'  Course Dashboard',bg=FRAME,fg='white',font=(TITLE_FONT,14,'bold')).pack(side='left')
@@ -260,39 +285,51 @@ class App(tk.Tk):
         tk.Label(self.rx_frame,text='Gy/Fx',bg=BG,fg=INK,font=(FONT,10)).pack(side='left',padx=(6,12))
         self.rx_summary=tk.Label(self.rx_frame,bg=BG,fg=INK,font=(FONT,10))
         self.rx_summary.pack(side='left')
-        cards=tk.Frame(self.top,bg=FRAME)
+        cards=tk.Frame(self.top,bg='#d3d8dc')
+        tk.Frame(cards,bg=FRAME).grid(row=0,column=6,columnspan=3,rowspan=8,sticky='nsew')
         self.fraction_grid=cards
         cards.pack(fill='x',padx=12,pady=0)
-        for row,label in enumerate(('DVH file','Plan DICOMs','DVH txt','RP + RD files','CT')):
-            cell=MetricTable.cell(cards,row,0,label,BG,row in (0,1))
-            cell.configure(width=1,font=(FONT,9,'bold' if row in (0,1) else 'normal'))
-            cell.configure(anchor='e',justify='right',padx=10,bg=FRAME,fg='white')
-            if row==4:cell.configure(anchor='se',borderwidth=0,pady=0)
-            if row in (2,3,4):
-                cell.configure(bg=FRAME,fg='white');cell.grid_configure(padx=0,pady=0)
-        self.buttons=[];self.file_labels=[];self.source_dates=[];self.dicom_buttons=[];self.ct_date_labels=[];self.point_review_buttons=[]
+        self.buttons=[];self.file_labels=[];self.dvh_date_labels=[];self.source_dates=[];self.rp_date_labels=[];self.dicom_buttons=[];self.ct_date_labels=[];self.point_review_buttons=[];self.point_carry_labels=[]
+        self.fraction_titles=[]
         self.modality_vars=[];self.modality_boxes=[]
+        # All fractions share one grid: wrapped names expand the same row
+        # across every fraction, instead of shifting individual card contents.
+        row_labels=('Fraction','DVH File ⓘ','DVH Name','DVH Date','Plan DICOM ⓘ','RP Name','RP Date','CT Date')
+        for row,text in enumerate(row_labels):
+            label=MetricTable.cell(cards,row,0,text,HEADER if row==0 else BG,row==0)
+            label.configure(font=(FONT,9,'bold') if row==0 else (FONT,10),anchor='e',justify='right',padx=10,pady=0)
+            if row==1:
+                self.bind_upload_help(label,'DVH File','Go to DVH. Select Absolute Dose and Absolute Volume. Dump to file. Upload DVH txt here.')
+            elif row==4:
+                self.bind_upload_help(label,'Plan DICOM','Select RP, RD, and/or CT files.')
         for fx in range(5):
+            col=fx+1
+            title=MetricTable.cell(cards,0,col,f'Fx {fx+1}',HEADER,True)
+            title.configure(font=(FONT,9,'bold'),pady=0)
+            self.fraction_titles.append(title)
             button=ttk.Button(cards,text=f'Load Fx{fx+1} DVH.txt',width=1,style='File.Load.TButton',command=lambda i=fx:self.load(i))
-            button.grid(row=0,column=fx+1,sticky='ew',padx=2,pady=1)
+            button.grid(row=1,column=col,sticky='nsew',padx=(0,1),pady=(0,1))
             self.buttons.append(button)
-            name=MetricTable.cell(cards,2,fx+1,'No DVH loaded','white')
-            name.configure(font=(FONT,9),height=1,anchor='center',justify='center',padx=8)
-            name.grid_configure(padx=0,pady=0)
-            name.bind('<Configure>',lambda e:e.widget.configure(wraplength=max(50,e.width-10)))
+            name=MetricTable.cell(cards,2,col,'—',SURFACE)
             self.file_labels.append(name)
-            self.source_dates.append(MetricTable.cell(cards,3,fx+1,'—','white'))
-            self.source_dates[-1].configure(height=0,anchor='center',justify='center')
-            self.source_dates[-1].bind('<Configure>',lambda e:e.widget.configure(wraplength=max(50,e.width-16)))
-            dicom=ttk.Button(cards,text=f'Load Fx{fx+1} DICOM',width=1,style='File.Load.TButton',command=lambda i=fx:self.load_dicoms(i))
-            dicom.grid(row=1,column=fx+1,sticky='ew',padx=2,pady=1)
+            dvh_date=MetricTable.cell(cards,3,col,'—',SURFACE)
+            self.dvh_date_labels.append(dvh_date)
+            dicom=ttk.Button(cards,text=f'Load Fx{fx+1} DCMs',width=1,style='File.Load.TButton',command=lambda i=fx:self.load_dicoms(i))
+            dicom.grid(row=4,column=col,sticky='nsew',padx=(0,1),pady=(0,1))
             self.dicom_buttons.append(dicom)
-            self.ct_date_labels.append(MetricTable.cell(cards,4,fx+1,'—','white'))
-            self.ct_date_labels[-1].configure(anchor='s',borderwidth=0,pady=0,font=(FONT,9))
-            for label in (self.source_dates[-1],self.ct_date_labels[-1]):label.grid_configure(padx=0,pady=0)
+            source=MetricTable.cell(cards,5,col,'—',SURFACE)
+            self.source_dates.append(source)
+            rp_date=MetricTable.cell(cards,6,col,'—',SURFACE)
+            self.rp_date_labels.append(rp_date)
+            ct=MetricTable.cell(cards,7,col,'—',SURFACE)
+            self.ct_date_labels.append(ct)
+            for label in (name,dvh_date,source,rp_date,ct):
+                label.configure(font=(FONT,10),anchor='center',justify='center',padx=5,pady=0)
+                label.bind('<Configure>',lambda e:e.widget.configure(wraplength=max(40,e.width-8)))
         attachments=tk.Frame(controls,bg=BG,padx=0,pady=0)
         attachments.pack(side='left',before=count)
         tk.Frame(controls,bg='#d3d8dc',width=1,height=22).pack(side='left',before=count,padx=12)
+        tk.Label(controls,text='BT Rx:',bg=BG,fg=INK,font=(FONT,10)).pack(side='left',before=count,padx=(0,4))
         tk.Label(attachments,text='PDF fraction',bg=BG,fg=INK).pack(side='left')
         self.image_fx=tk.StringVar(value='Fx 1')
         self.image_fx_box=ttk.Combobox(attachments,textvariable=self.image_fx,state='readonly',width=5)
@@ -315,7 +352,7 @@ class App(tk.Tk):
         ebrt_heading.pack(fill='x',padx=14,pady=(1,1),before=self.prior_frame)
         for col,(title,weight) in enumerate((('Parameter',4),('Value',1),('Tumour EQD2₁₀ [Gy]',2),('OAR EQD2₃ [Gy]',2))):
             MetricTable.cell(self.prior_frame,0,col,title,HEADER,True)
-            self.prior_frame.columnconfigure(col,weight=0,minsize=(290,90,195,185)[col])
+            self.prior_frame.columnconfigure(col,weight=0)
         self.prior_vars=[tk.StringVar(),tk.StringVar()]
         self.prior_display={}
         for row,(text,var) in enumerate(zip(('Dose per fraction [Gy]','Fractions without central shield'),self.prior_vars),1):
@@ -327,28 +364,36 @@ class App(tk.Tk):
         MetricTable.cell(self.prior_frame,3,0,'Total dose [Gy]','white',True).configure(padx=12)
         for col in (1,2,3):self.prior_display[3,col]=MetricTable.cell(self.prior_frame,3,col,'','white',True)
         # Continue the worksheet grid across the spare width without stretching EBRT.
-        for col in range(4,7):
-            self.prior_frame.columnconfigure(col,weight=1,uniform='ebrt_blank')
+        for col in range(4,9):
+            self.prior_frame.columnconfigure(col,weight=0)
             for row in range(4):
                 MetricTable.cell(self.prior_frame,row,col,'','white')
         for widget in self.prior_frame.winfo_children():
             current=str(widget.cget('font'))
-            widget.configure(font=(FONT,9,'bold' if 'bold' in current else 'normal'))
+            widget.configure(font=(FONT,10,'bold' if 'bold' in current else 'normal'))
         if self.course.mode=='Cylinder':
             self.prior_frame.pack_forget();ebrt_heading.pack_forget()
-        body=MetricTable(self.dashboard,self,'DOSE / EQD2',self.course.structures,None)
+        worksheet=tk.Frame(content,bg=FRAME)
+        body=MetricTable(worksheet,self,'DOSE / EQD2',self.course.structures,None)
         self.tables=[body]
-        footer=tk.Frame(self.dashboard,bg=BG)
-        # Fit the setup to its content; give all remaining height to the table.
-        self.top.grid(row=0,column=0,sticky='nsew')
-        body.grid(row=1,column=0,sticky='nsew',padx=12,pady=(0,3))
-        footer.grid(row=2,column=0,sticky='ew',padx=12,pady=(2,6))
-        self.dashboard.columnconfigure(0,weight=1)
-        self.dashboard.rowconfigure(0,weight=0)
-        self.dashboard.rowconfigure(1,weight=1)
+        footer=self.footer=tk.Frame(self.dashboard,bg=BG)
+        # Reserve the footer before allocating space to setup and worksheet.
+        # Child requested sizes must never push export actions off screen.
+        footer.pack(side='bottom',fill='x',padx=12,pady=(2,6))
+        content.pack(side='top',fill='both',expand=True)
+        content.add(setup,minsize=100,stretch='never')
+        content.add(worksheet,minsize=130,stretch='always')
+        body.pack(fill='both',expand=True,padx=12,pady=(0,3))
         self.chooser.lift()
-        self.top.update_idletasks()
-        self.dashboard.rowconfigure(0,minsize=0)
+        divider_initialized=False
+        def position_divider(event=None):
+            nonlocal divider_initialized
+            if divider_initialized or not content.winfo_exists() or content.winfo_height()<237:
+                return
+            content.sash_place(0,0,min(self.top.winfo_reqheight()+2,content.winfo_height()-137))
+            divider_initialized=True
+        content.bind('<Configure>',position_divider)
+        self.after_idle(position_divider)
         ttk.Button(footer,text='Export Excel',command=self.export,width=14).pack(side='right',padx=(10,8),pady=5)
         ttk.Button(footer,text='Export PDF',command=self.export_report,width=14).pack(side='right',padx=(10,0),pady=5)
         ttk.Button(footer,text='Clear all',command=self.clear,width=10).pack(side='right',padx=(10,0),pady=5)
@@ -363,6 +408,36 @@ class App(tk.Tk):
         self.notebook.add(self.preview,text='PDF preview')
         self.notebook.bind('<<NotebookTabChanged>>',self.tab_changed)
         self.refresh()
+
+    def bind_upload_help(self, label, title, instructions):
+        """Expose upload guidance on hover, click, and keyboard focus."""
+        tooltip=None
+        def hide(event=None):
+            nonlocal tooltip
+            if tooltip is not None:
+                tooltip.destroy();tooltip=None
+        def show(event=None):
+            nonlocal tooltip
+            if tooltip is not None:return
+            tooltip=tk.Toplevel(self)
+            tooltip.overrideredirect(True)
+            tk.Label(tooltip,text=instructions,bg=SURFACE,fg=INK,font=(FONT,10),
+                     justify='left',wraplength=320,padx=10,pady=8,
+                     relief='solid',borderwidth=1).pack()
+            tooltip.update_idletasks()
+            x=min(label.winfo_rootx(),self.winfo_screenwidth()-tooltip.winfo_reqwidth()-8)
+            y=min(label.winfo_rooty()+label.winfo_height(),self.winfo_screenheight()-tooltip.winfo_reqheight()-8)
+            tooltip.geometry(f'+{max(0,x)}+{max(0,y)}')
+        def details(event=None):
+            hide()
+            messagebox.showinfo(title,instructions,parent=self)
+            return 'break'
+        label.configure(cursor='hand2',takefocus=True)
+        label.bind('<Enter>',show);label.bind('<Leave>',hide)
+        label.bind('<FocusIn>',show);label.bind('<FocusOut>',hide)
+        label.bind('<Button-1>',details)
+        label.bind('<Return>',details);label.bind('<space>',details)
+        label.bind('<Destroy>',hide)
 
     def tab_changed(self,event=None):
         if self.notebook.select()==str(self.preview):self.preview.refresh_document()
@@ -388,15 +463,29 @@ class App(tk.Tk):
         self.patient.configure(text=f'Patient: {c.patient or "—"}   |   ID: {c.patient_id or "—"}')
         for fx,label in enumerate(self.file_labels):
             date=c.dvhs[fx].source_date if c.dvhs[fx] else ''
-            text=f'{c.files[fx]} ({date or chr(8212)})' if c.files[fx] else '—'
-            label.configure(text=text if fx<c.count else '—',height=0 if c.files[fx] and fx<c.count else 1,bg=FRAME,fg='white' if fx<c.count else '#929ba4')
-            rp_text=f'{c.rp_names[fx]} ({c.rp_dates[fx] or chr(8212)})' if c.rp_names[fx] else '—'
-            self.source_dates[fx].configure(text=rp_text if fx<c.count else '—',bg=FRAME,fg='white' if fx<c.count else '#929ba4')
+            text=c.files[fx] or '—'
+            self.dvh_date_labels[fx].configure(text=(date or '—') if fx<c.count else '—',bg=SURFACE if fx<c.count else INACTIVE,fg=INK if fx<c.count else MUTED)
+            label.configure(text=text if fx<c.count else '—',height=0 if c.files[fx] and fx<c.count else 1,bg=SURFACE if fx<c.count else INACTIVE,fg=INK if fx<c.count else MUTED)
+            rp_text=c.rp_names[fx] or '—'
+            self.source_dates[fx].configure(text=rp_text if fx<c.count else '—',bg=SURFACE if fx<c.count else INACTIVE,fg=INK if fx<c.count else MUTED)
+            self.rp_date_labels[fx].configure(text=(c.rp_dates[fx] or '—') if fx<c.count else '—',bg=SURFACE if fx<c.count else INACTIVE,fg=INK if fx<c.count else MUTED)
         for fx,button in enumerate(self.point_review_buttons):
+            source=c.point_sources[fx]
+            carried=fx<c.count and source is not None and source!=fx and not c.point_explicit[fx]
+            label=self.point_carry_labels[fx]
+            if carried:
+                button.grid_remove()
+                label.configure(text=f'Carried from Fx{source+1}')
+                label.grid()
+            else:
+                label.grid_remove()
+                button.grid()
             button.configure(state='normal' if fx<c.count and c.mode=='GYN' and c.point_records[fx] else 'disabled')
+        for fx,title in enumerate(self.fraction_titles):
+            title.configure(bg=HEADER if fx<c.count else INACTIVE,fg=INK if fx<c.count else MUTED)
         for fx,button in enumerate(self.dicom_buttons):
             button.configure(state='normal' if fx<c.count else 'disabled')
-            self.ct_date_labels[fx].configure(text=(c.ct_dates[fx] or '—') if fx<c.count else '—',bg=FRAME,fg='white' if fx<c.count else '#929ba4')
+            self.ct_date_labels[fx].configure(text=(c.ct_dates[fx] or '—') if fx<c.count else '—',bg=SURFACE if fx<c.count else INACTIVE,fg=INK if fx<c.count else MUTED)
         self.prior_vars[0].set(fmt(c.dose_per_fx))
         self.prior_vars[1].set(str(c.prior_fractions))
         self.prior_displayed=[v.get() for v in self.prior_vars]
@@ -529,6 +618,7 @@ class App(tk.Tk):
         try:
             from embrace_dicom import read_fraction_dicoms
             result=read_fraction_dicoms(paths,self.course.patient_id)
+            if result is None:return
             candidate=deepcopy(self.course)
             candidate.patient_id=candidate.patient_id or result['patient_id']
             for plan in self.comparison.model.plans:
@@ -539,9 +629,7 @@ class App(tk.Tk):
                 candidate.rp_names[fx]=result['rp_name'];candidate.rp_dates[fx]=result['rp_date']
             points=result['points']
             if points is not None and candidate.mode=='GYN':
-                candidate.point_records[fx]=points
-                candidate.point_source_dates[fx]=result['date']
-                candidate.point_doses[fx]={p['target']:p['dose'] for p in points if p['target']}
+                candidate.set_points(fx,points,result['date'])
             self.course=candidate;self.dvh_folder=str(Path(paths[0]).parent);self.refresh()
             matched=sum(bool(p['target']) for p in points or [])
             self.status_text.set(f'Fx {fx+1}: DICOM loaded. '+(f'{matched} point doses matched. ' if points is not None else '')+' '.join(result['warnings']))
@@ -577,8 +665,7 @@ class App(tk.Tk):
             if len(used)!=len(set(used)):
                 messagebox.showerror('Duplicate point','Choose a different worksheet destination for each point.',parent=dialog);return
             for point,target in zip(records,targets):point['target']=target
-            self.course.point_records[fx]=records
-            self.course.point_doses[fx]={p['target']:p['dose'] for p in records if p['target']}
+            self.course.set_points(fx,records,self.course.point_source_dates[fx])
             self.refresh();dialog.destroy()
         ttk.Button(dialog,text='Apply matches',command=apply).grid(row=len(records)+2,column=3,padx=8,pady=10)
         ttk.Button(dialog,text='Close',command=dialog.destroy).grid(row=len(records)+2,column=0,padx=8,pady=10)
@@ -703,6 +790,19 @@ def packaged_smoke_test(report_path):
     try:
         app.update()
         assert app.course.count==4 and app.course.prescription_gy==7.0
+        original_geometry=app.geometry()
+        for width,height in ((1020,680),(1200,800)):
+            app.geometry(f'{width}x{height}')
+            app.update()
+            for button in app.footer.winfo_children():
+                if isinstance(button,ttk.Button):
+                    x=button.winfo_rootx()-app.winfo_rootx()
+                    y=button.winfo_rooty()-app.winfo_rooty()
+                    assert button.winfo_ismapped()
+                    assert 0<=x and x+button.winfo_width()<=app.winfo_width()
+                    assert 0<=y and y+button.winfo_height()<=app.winfo_height()
+        app.geometry(original_geometry)
+        app.update()
         app.inputs['ctvhr_D90',0][0].set('100%')
         app.commit_inputs()
         app.prescription_var.set('8.0')
@@ -721,6 +821,8 @@ def packaged_smoke_test(report_path):
             assert button.master==label.master
             assert button.winfo_rooty()<label.winfo_rooty()
         assert len(app.tables)==1
+        for widgets in (app.buttons,app.file_labels,app.dvh_date_labels,app.dicom_buttons,app.source_dates,app.rp_date_labels,app.ct_date_labels):
+            assert len({(w.winfo_rooty(),w.winfo_height()) for w in widgets})==1
         assert all(w.winfo_ismapped() for w in app.volumes.values())
         for key,total in app.totals.items():
             dose=app.inputs[key,0][1]
@@ -779,7 +881,7 @@ def packaged_smoke_test(report_path):
         app.mode_var.set('GYN');app.change_mode();app.update()
         assert app.course.values==saved.values and app.course.count==saved.count
         assert app.prior_frame.winfo_ismapped()
-        Path(report_path).write_text(json.dumps({'status':'passed','checks':['GUI','precision preservation','fixed headers','ESTRO dose/EQD2 row order','fraction controls','bundled Excel export','PDF export','four-plan comparison','comparison PDF','cylinder mode']}))
+        Path(report_path).write_text(json.dumps({'status':'passed','checks':['GUI','footer visible at multiple window sizes','precision preservation','fixed headers','ESTRO dose/EQD2 row order','fraction controls','bundled Excel export','PDF export','four-plan comparison','comparison PDF','cylinder mode']}))
     finally:
         app.destroy()
 

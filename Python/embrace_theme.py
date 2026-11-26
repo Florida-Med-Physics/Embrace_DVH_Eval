@@ -48,6 +48,7 @@ def apply_theme(root):
     style.configure('Load.TButton',background='#f7f8fa',borderwidth=2,relief='raised',bordercolor='#8996a3',lightcolor='#ffffff',darkcolor='#a5afb9',padding=(8,4),font=(FONT,9,'bold'))
     style.map('Load.TButton',background=[('disabled',HEADER),('pressed','#cbd3da'),('active','#e4e9ee')],relief=[('pressed','sunken')],bordercolor=[('disabled','#cbd0d5'),('active','#627487')],lightcolor=[('disabled',HEADER),('pressed','#a5afb9')],darkcolor=[('disabled',HEADER),('pressed','#ffffff')])
     style.configure('Compact.Load.TButton',padding=(5,1))
+    style.configure('Card.Load.TButton',padding=(3,1),font=(FONT,9,'bold'))
     style.configure('File.Load.TButton',padding=(3,1),font=(FONT,8,'bold'))
     style.configure('TCheckbutton',background=BG,foreground=MUTED)
     style.map('TCheckbutton',background=[('active',BG)],foreground=[('active',INK)])
