@@ -70,7 +70,13 @@ class MetricTable(tk.Frame):
             entry.bind('<Return>',app.edit_pending);entry.bind('<FocusOut>',app.edit_pending)
             app.fx_date_vars.append(var);app.fx_date_entries.append(entry)
         for col in (6,7,8):self.cell(self.grid_frame,1,col,'',BG)
-        row=2
+        self.cell(self.grid_frame,2,0,'DVH name',BG).configure(anchor='center',justify='center')
+        for fx in range(5):
+            label=self.cell(self.grid_frame,2,fx+1,'—',SURFACE)
+            label.configure(justify='center',wraplength=110)
+            app.worksheet_dvh_labels.append(label)
+        for col in (6,7,8):self.cell(self.grid_frame,2,col,'',BG)
+        row=3
         def point_section(title,bg=HEADER):
             nonlocal row
             heading=self.cell(self.grid_frame,row,0,title,bg,True)
@@ -206,6 +212,8 @@ class MetricTable(tk.Frame):
             self.app.structure_review_buttons[fx].configure(text=f'Review Fx{fx+1}\nROI matches')
             if self.app.point_review_buttons:
                 self.app.point_review_buttons[fx].configure(text=wrap(f'Review Fx {fx+1} point matches',available))
+        for fx,label in enumerate(self.app.worksheet_dvh_labels):
+            label.configure(wraplength=max(40,widths[fx+1]-12))
         for label in self.app.point_carry_labels+self.app.structure_carry_labels:
             col=int(label.grid_info().get('column',1)) if label.winfo_manager() else 1
             label.configure(wraplength=max(40,widths[col]-10))
@@ -332,6 +340,7 @@ class App(tk.Tk):
         cards.pack(fill='x',padx=12,pady=0)
         self.buttons=[];self.file_labels=[];self.dvh_date_labels=[];self.source_dates=[];self.rp_date_labels=[];self.dicom_buttons=[];self.ct_date_labels=[];self.point_review_buttons=[];self.point_carry_labels=[];self.structure_review_buttons=[];self.structure_carry_labels=[]
         self.fraction_titles=[]
+        self.worksheet_dvh_labels=[]
         self.modality_vars=[];self.modality_boxes=[];self.fx_date_vars=[];self.fx_date_entries=[];self.fx_date_displayed=[]
         # All fractions share one grid: wrapped names expand the same row
         # across every fraction, instead of shifting individual card contents.
@@ -538,31 +547,34 @@ class App(tk.Tk):
             text=c.files[fx] or '—'
             self.dvh_date_labels[fx].configure(text=(date or '—') if fx<c.count else '—',bg=SURFACE if fx<c.count else INACTIVE,fg=INK if fx<c.count else MUTED)
             label.configure(text=text if fx<c.count else '—',height=0 if c.files[fx] and fx<c.count else 1,bg=SURFACE if fx<c.count else INACTIVE,fg=INK if fx<c.count else MUTED)
+            self.worksheet_dvh_labels[fx].configure(text=label.cget('text'),
+                bg=label.cget('bg'),fg=label.cget('fg'))
             rp_text=c.rp_names[fx] or '—'
             self.source_dates[fx].configure(text=rp_text if fx<c.count else '—',bg=SURFACE if fx<c.count else INACTIVE,fg=INK if fx<c.count else MUTED)
             self.rp_date_labels[fx].configure(text=(c.rp_dates[fx] or '—') if fx<c.count else '—',bg=SURFACE if fx<c.count else INACTIVE,fg=INK if fx<c.count else MUTED)
         for fx,button in enumerate(self.structure_review_buttons):
-            carried=fx<c.count and c.dvhs[fx] is None and ' (carried from Fx' in c.files[fx]
+            has_structures=fx<c.count and c.dvhs[fx] is not None and bool(c.dvhs[fx].structure_matches)
             label=self.structure_carry_labels[fx]
-            if carried:
+            if not has_structures:
                 button.grid_remove()
-                label.configure(text=c.files[fx].rsplit(' (',1)[-1].rstrip(')').replace('carried','Carried',1))
+                label.configure(text='')
                 label.grid()
             else:
                 label.grid_remove();button.grid()
-            button.configure(state='normal' if fx<c.count and c.dvhs[fx] is not None else 'disabled')
+            button.configure(state='normal' if has_structures else 'disabled')
         for fx,button in enumerate(self.point_review_buttons):
             source=c.point_sources[fx]
-            carried=fx<c.count and source is not None and source!=fx and not c.point_explicit[fx]
+            has_points=fx<c.count and c.mode=='GYN' and bool(c.point_records[fx])
+            carried=has_points and source is not None and source!=fx and not c.point_explicit[fx]
             label=self.point_carry_labels[fx]
-            if carried:
+            if not has_points or carried:
                 button.grid_remove()
-                label.configure(text=f'Carried from Fx{source+1}')
+                label.configure(text=f'Carried from Fx{source+1}' if carried else '')
                 label.grid()
             else:
                 label.grid_remove()
                 button.grid()
-            button.configure(state='normal' if fx<c.count and c.mode=='GYN' and c.point_records[fx] else 'disabled')
+            button.configure(state='normal' if has_points else 'disabled')
         for fx,title in enumerate(self.fraction_titles):
             title.configure(bg=HEADER if fx<c.count else INACTIVE,fg=INK if fx<c.count else MUTED)
         for fx,button in enumerate(self.dicom_buttons):
@@ -725,33 +737,81 @@ class App(tk.Tk):
         if not self.commit_inputs():return
         if fx>=self.course.count or self.course.dvhs[fx] is None:return
         parsed=self.course.dvhs[fx]
-        dialog=tk.Toplevel(self);dialog.title(f'Fx {fx+1}: review structure matches')
+        dialog=tk.Toplevel(self,bg=BG);dialog.title(f'Fx {fx+1}: Structure matches')
         dialog.transient(self);dialog.grab_set()
-        tk.Label(dialog,text='Review exported structures and their worksheet matches. Each destination can be used once.',
-                 wraplength=650,justify='left').pack(fill='x',padx=12,pady=10)
-        area=tk.Frame(dialog);area.pack(fill='both',expand=True,padx=12)
-        canvas=tk.Canvas(area,highlightthickness=0,width=640,height=360)
-        scroll=ttk.Scrollbar(area,orient='vertical',command=canvas.yview)
-        canvas.configure(yscrollcommand=scroll.set)
-        scroll.pack(side='right',fill='y');canvas.pack(side='left',fill='both',expand=True)
-        rows=tk.Frame(canvas);window=canvas.create_window((0,0),window=rows,anchor='nw')
+        dialog.minsize(560,280)
+        heading=tk.Frame(dialog,bg=BG)
+        heading.pack(fill='x',padx=20,pady=(16,12))
+        tk.Label(heading,text=f'Structure matches · Fx {fx+1}',bg=BG,fg=INK,
+                 font=(FONT,12,'bold'),anchor='w').pack(fill='x')
+        metadata=tk.Frame(heading,bg=BG)
+        metadata.pack(fill='x',pady=(6,0))
+        metadata.columnconfigure(1,weight=1)
+        for row,(label,value) in enumerate((('DVH plan',parsed.plan or '—'),
+                                            ('TXT file',self.course.files[fx] or '—'))):
+            tk.Label(metadata,text=label,bg=BG,fg=MUTED,font=(FONT,TEXT_SIZE),
+                     anchor='w').grid(row=row,column=0,sticky='nw',padx=(0,12),pady=1)
+            tk.Label(metadata,text=value,bg=BG,fg=INK,font=(FONT,TEXT_SIZE),
+                     anchor='w',justify='left',wraplength=520).grid(row=row,column=1,sticky='ew',pady=1)
+        area=tk.Frame(dialog,bg='#d3d8dc',borderwidth=1,relief='flat')
+        area.pack(fill='both',expand=True,padx=20)
+        header=tk.Frame(area,bg=HEADER)
+        header.pack(fill='x')
+        header_grid=tk.Frame(header,bg=HEADER)
+        header_grid.pack(side='left',fill='x',expand=True)
+        viewport=tk.Frame(area,bg=SURFACE)
+        viewport.pack(fill='both',expand=True)
+        canvas=tk.Canvas(viewport,bg=SURFACE,highlightthickness=0,width=640,
+                         height=min(360,max(64,32*len(parsed.structure_matches))))
+        scroll=ttk.Scrollbar(viewport,orient='vertical',command=canvas.yview)
+        canvas.pack(side='left',fill='both',expand=True)
+        gutter=tk.Frame(header,bg=HEADER,width=0)
+        gutter.pack(side='right',fill='y')
+        def show_scrollbar(first,last):
+            scroll.set(first,last)
+            if float(first)<=0 and float(last)>=1:
+                scroll.pack_forget();gutter.configure(width=0)
+            else:
+                scroll.pack(side='right',fill='y',before=canvas)
+                gutter.configure(width=scroll.winfo_reqwidth())
+        canvas.configure(yscrollcommand=show_scrollbar)
+        rows=tk.Frame(canvas,bg=SURFACE)
+        window=canvas.create_window((0,0),window=rows,anchor='nw')
         rows.bind('<Configure>',lambda e:canvas.configure(scrollregion=canvas.bbox('all')))
-        canvas.bind('<Configure>',lambda e:canvas.itemconfigure(window,width=e.width))
-        rows.columnconfigure(0,weight=1);rows.columnconfigure(1,weight=1)
+        source_labels=[]
+        def resize_rows(event):
+            canvas.itemconfigure(window,width=event.width)
+            for label in source_labels:label.configure(wraplength=max(100,event.width//2-24))
+        canvas.bind('<Configure>',resize_rows)
+        for grid in (rows,header_grid):
+            for col in (0,1):grid.columnconfigure(col,weight=1,uniform='match_columns')
         for col,title in enumerate(('Exported structure','Worksheet structure')):
-            tk.Label(rows,text=title,font=(FONT,TEXT_SIZE,'bold')).grid(row=0,column=col,padx=8,pady=4)
+            tk.Label(header_grid,text=title,bg=HEADER,fg=INK,anchor='w',
+                     font=(FONT,TEXT_SIZE,'bold')).grid(row=0,column=col,sticky='ew',padx=12,pady=9)
         choices={'Unassigned':None,**{title:key for title,key,_ in self.course.structures}}
         inverse={key:title for title,key in choices.items()}
         selections=[];boxes=[]
-        for row,(name,target) in enumerate(parsed.structure_matches.items(),1):
-            label=tk.Label(rows,text=name,anchor='w',justify='left',wraplength=290)
-            label.grid(row=row,column=0,sticky='ew',padx=8,pady=3)
+        for row,(name,target) in enumerate(parsed.structure_matches.items()):
+            color=SURFACE if row%2==0 else '#f3f5f7'
+            source=tk.Frame(rows,bg=color)
+            source.grid(row=row,column=0,sticky='nsew')
+            label=tk.Label(source,text=name,bg=color,fg=INK,font=(FONT,TEXT_SIZE),
+                           anchor='w',justify='left',wraplength=290)
+            label.pack(fill='both',expand=True,padx=12,pady=3)
+            source_labels.append(label)
+            destination=tk.Frame(rows,bg=color)
+            destination.grid(row=row,column=1,sticky='nsew')
             var=tk.StringVar(value=inverse.get(target,'Unassigned'))
-            box=ttk.Combobox(rows,textvariable=var,state='readonly',width=26,justify='right')
-            box.grid(row=row,column=1,sticky='ew',padx=8,pady=3)
+            box=ttk.Combobox(destination,textvariable=var,state='readonly',width=24,
+                             font=(FONT,TEXT_SIZE),justify='left')
+            box.pack(fill='x',padx=12,pady=2)
+            rows.rowconfigure(row,minsize=30)
             selections.append((name,var));boxes.append(box)
+        match_summary=tk.StringVar()
         def update_choices(*_):
             selected=[var.get() for _,var in selections]
+            assigned=sum(value!='Unassigned' for value in selected)
+            match_summary.set(f'{assigned} of {len(selected)} matched')
             for i,box in enumerate(boxes):
                 taken={v for j,v in enumerate(selected) if i!=j and v!='Unassigned'}
                 box.configure(values=[label for label in choices if label not in taken])
@@ -768,9 +828,22 @@ class App(tk.Tk):
                 dialog.destroy()
             except (ValueError,OSError) as error:
                 messagebox.showerror('Structure matches',str(error),parent=dialog)
-        buttons=tk.Frame(dialog);buttons.pack(fill='x',padx=12,pady=10)
-        ttk.Button(buttons,text='Close',command=dialog.destroy).pack(side='left')
-        ttk.Button(buttons,text='Apply matches',command=apply).pack(side='right')
+        buttons=tk.Frame(dialog,bg=BG);buttons.pack(fill='x',padx=20,pady=14)
+        tk.Label(buttons,textvariable=match_summary,bg=BG,fg=MUTED,
+                 font=(FONT,TEXT_SIZE),anchor='w').pack(side='left')
+        ttk.Button(buttons,text='Apply matches',style='Primary.TButton',command=apply).pack(side='right')
+        ttk.Button(buttons,text='Close',command=dialog.destroy).pack(side='right',padx=(0,8))
+        width=min(700,self.winfo_screenwidth()-60)
+        dialog.geometry(f'{width}x{dialog.winfo_reqheight()}')
+        dialog.update_idletasks()
+        # Use the measured table height, including wrapped names and native
+        # control sizes, rather than an estimate that clips the final row.
+        canvas.configure(height=rows.winfo_reqheight()+2)
+        dialog.update_idletasks()
+        height=min(dialog.winfo_reqheight(),self.winfo_screenheight()-80)
+        x=max(0,min(self.winfo_rootx()+(self.winfo_width()-width)//2,self.winfo_screenwidth()-width))
+        y=max(30,min(self.winfo_rooty()+(self.winfo_height()-height)//2,self.winfo_screenheight()-height-40))
+        dialog.geometry(f'{width}x{height}+{x}+{y}')
 
     def review_loaded_points(self,fx):
         if not self.commit_inputs():return
